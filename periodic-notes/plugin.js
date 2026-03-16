@@ -39,10 +39,15 @@ class Plugin extends CollectionPlugin {
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
     });
+    this._refreshTimer = setInterval(() => {
+      this._refreshCurrentButton();
+      this._syncActiveRecordPeriodStart();
+    }, 500);
     this._syncActiveRecordPeriodStart();
   }
 
   onUnload() {
+    if (this._refreshTimer) clearInterval(this._refreshTimer);
     if (this._prevButton) this._prevButton.remove();
     if (this._currentButton) this._currentButton.remove();
     if (this._nextButton) this._nextButton.remove();
@@ -54,7 +59,7 @@ class Plugin extends CollectionPlugin {
       const targetDate = this._shiftPeriod(baseDate, direction);
       await this._openPeriodRecord({ ev, panel, sourceDate: targetDate });
     } catch (error) {
-      this._toast('Journal Notes', error?.message || `Unable to open ${this._periodWord()} note.`);
+      this._toast('Thymer Cadence', error?.message || `Unable to open ${this._periodWord()} note.`);
     }
   }
 
@@ -62,18 +67,23 @@ class Plugin extends CollectionPlugin {
     try {
       await this._openPeriodRecord({ ev, panel, sourceDate: this._today() });
     } catch (error) {
-      this._toast('Journal Notes', error?.message || `Unable to open ${this._periodWord()} note.`);
+      this._toast('Thymer Cadence', error?.message || `Unable to open ${this._periodWord()} note.`);
     }
   }
 
   async _openPeriodRecord({ ev, panel, sourceDate }) {
     const record = await this._findOrCreatePeriodRecord(sourceDate);
     if (!record) {
-      this._toast('Journal Notes', `Unable to open ${this._periodWord()} note.`);
+      this._toast('Thymer Cadence', `Unable to open ${this._periodWord()} note.`);
       return;
     }
 
-    this._navigateToRecord(record.guid, ev);
+    const targetPanel = await this._getTargetPanel(panel, ev);
+    if (targetPanel && this._navigateToRecord(targetPanel, record.guid)) {
+      return;
+    }
+
+    this._navigateToUrl(record.guid, ev);
   }
 
   async _findOrCreatePeriodRecord(sourceDate) {
@@ -89,7 +99,7 @@ class Plugin extends CollectionPlugin {
 
     const record = this.data.getRecord(guid);
     if (record) {
-      this._setPeriodStart(record, periodStart);
+      this._setPeriodMetadata(record, periodStart);
       return record;
     }
 
@@ -100,24 +110,29 @@ class Plugin extends CollectionPlugin {
   async _finalizeCreatedRecord(guid, periodStart) {
     const record = await this._waitForRecord(guid);
     if (record) {
-      this._setPeriodStart(record, periodStart);
+      this._setPeriodMetadata(record, periodStart);
     }
   }
 
-  _setPeriodStart(record, periodStart) {
+  _setPeriodMetadata(record, periodStart) {
     const periodProperty = record.prop('period_start') || record.prop('Period Start');
     if (periodProperty) {
       periodProperty.set(this._dateTimeValue(periodStart));
     }
+
+    const keyProperty = record.prop('period_key') || record.prop('Period Key');
+    if (keyProperty) {
+      keyProperty.set(this._periodKey(periodStart));
+    }
   }
 
   async _findRecordByPeriodStart(collection, targetDate) {
-    const targetKey = this._dateKey(targetDate);
+    const targetKey = this._periodKey(targetDate);
     const records = await collection.getAllRecords();
 
     for (const record of records) {
-      const recordDate = record.date('period_start') || record.date('Period Start');
-      if (recordDate && this._dateKey(recordDate) === targetKey) {
+      const recordKey = this._recordPeriodKey(record);
+      if (recordKey === targetKey) {
         return record;
       }
     }
@@ -153,7 +168,7 @@ class Plugin extends CollectionPlugin {
 
     const parsed = this._parsePeriodStartFromTitle(activeRecord.getName());
     if (!parsed) return;
-    periodProp.set(this._dateTimeValue(parsed));
+    this._setPeriodMetadata(activeRecord, parsed);
   }
 
   _refreshCurrentButton() {
@@ -172,7 +187,27 @@ class Plugin extends CollectionPlugin {
     return (await this.ui.createPanel(options)) || basePanel;
   }
 
-  _navigateToRecord(guid, ev) {
+  _navigateToRecord(panel, guid) {
+    const workspaceGuid = this.collectionRoot?.wsguid || this.data.getActiveUsers()?.[0]?.workspaceGuid || null;
+    if (!workspaceGuid || !guid || !panel || typeof panel.navigateTo !== 'function') return false;
+
+    try {
+      panel.navigateTo({
+        type: 'edit_panel',
+        rootId: guid,
+        subId: null,
+        workspaceGuid,
+      });
+      if (typeof this.ui.setActivePanel === 'function') {
+        this.ui.setActivePanel(panel);
+      }
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  _navigateToUrl(guid, ev) {
     const workspaceGuid = this.collectionRoot?.wsguid || this.data.getActiveUsers()?.[0]?.workspaceGuid || null;
     if (!workspaceGuid || !guid) return;
 
@@ -185,6 +220,18 @@ class Plugin extends CollectionPlugin {
     }
 
     window.location.assign(url);
+  }
+
+  _recordPeriodKey(record) {
+    if (!record) return null;
+
+    if (typeof record.text === 'function') {
+      const keyText = record.text('period_key') || record.text('Period Key');
+      if (keyText) return keyText;
+    }
+
+    const derivedDate = this._recordPeriodStart(record);
+    return derivedDate ? this._periodKey(derivedDate) : null;
   }
 
   _recordPeriodStart(record) {
@@ -200,6 +247,10 @@ class Plugin extends CollectionPlugin {
       if (periodProp && typeof periodProp.date === 'function') {
         periodStart = periodProp.date();
       }
+    }
+
+    if (!periodStart && typeof record.getName === 'function') {
+      periodStart = this._parsePeriodStartFromTitle(record.getName());
     }
 
     return periodStart ? this._dateOnly(periodStart) : null;
@@ -296,6 +347,18 @@ class Plugin extends CollectionPlugin {
     }
 
     return String(date.getFullYear());
+  }
+
+  _periodKey(date) {
+    const normalized = this._normalizePeriodStart(date);
+    if (this._periodMode === 'weekly') {
+      const info = this._isoWeekInfo(normalized);
+      return `${info.year}-${String(info.week).padStart(2, '0')}`;
+    }
+    if (this._periodMode === 'monthly') {
+      return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return String(normalized.getFullYear());
   }
 
   _normalizePeriodStart(inputDate) {

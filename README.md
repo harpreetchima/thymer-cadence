@@ -1,6 +1,6 @@
-# Journal Notes for Thymer
+# Thymer Cadence
 
-Working repo for extending Thymer's native `Daily Note` into a broader periodic notes flow.
+Working repo for extending Thymer's native `Daily Note` into a broader periodic notes flow under the `Thymer Cadence` name.
 
 Current direction:
 
@@ -8,6 +8,7 @@ Current direction:
 - Add compact native-style shortcuts for the matching week, month, and year records on daily pages.
 - Use normal collections for `Weekly Notes`, `Monthly Notes`, and `Yearly Notes`.
 - Use ISO weeks with Monday start.
+- Store a hidden `Period Key` value for stable chronological sorting (`YYYY-WW`, `YYYY-MM`, `YYYY`).
 
 Compact nav labels:
 
@@ -26,15 +27,20 @@ Current behavior:
 
 - Daily buttons open or create the matching week, month, and year records for the viewed day.
 - Period pages use left and right buttons relative to the open record.
-- The center button follows Thymer's native `Today` pattern: it jumps to the current real-world week, month, or year, so on an older or future period page it may differ from the page title.
+- The center button stays anchored to the current real-world week, month, or year, matching Thymer's native `Today` behavior.
+- `Period Start` is written automatically for created period records; `Period End` is intentionally omitted for now because nav + sorting only need the start boundary.
 
 Repo layout:
 
 - `daily-note/` - local working copy of the existing Daily Note journal plugin
 - `periodic-notes/` - reusable collection plugin for weekly, monthly, and yearly collections
 
+Local folder:
+
+- `/Users/harpreetchima/Documents/Projects/chima-thymer/plugins/thymer-cadence/`
+
 Status:
 
-- Repo scaffolded
-- Architecture decisions captured
-- Production logic not implemented yet
+- Local implementation and Thymer workspace prototype are in place
+- Period navigation, `Period Start`, and hidden `Period Key` metadata are working
+- Future work is now focused on follow-up UI ideas like the calendar surface

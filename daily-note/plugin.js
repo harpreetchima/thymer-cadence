@@ -70,17 +70,22 @@ class Plugin extends JournalCorePlugin {
   async _openPeriodNote({ ev, panel, periodMode, sourceDate }) {
     const collection = await this._findPeriodCollection(periodMode);
     if (!collection) {
-      this._toast('Journal Notes', `Collection not found for ${periodMode} notes.`);
+      this._toast('Thymer Cadence', `Collection not found for ${periodMode} notes.`);
       return;
     }
 
     const record = await this._findOrCreatePeriodRecord(collection, periodMode, sourceDate);
     if (!record) {
-      this._toast('Journal Notes', `Unable to open ${periodMode} note.`);
+      this._toast('Thymer Cadence', `Unable to open ${periodMode} note.`);
       return;
     }
 
-    this._navigateToRecord(record.guid, ev);
+    const targetPanel = await this._getTargetPanel(panel, ev);
+    if (targetPanel && this._navigateToRecord(targetPanel, record.guid)) {
+      return;
+    }
+
+    this._navigateToUrl(record.guid, ev);
   }
 
   _sourceDateFromRecord(record) {
@@ -111,7 +116,7 @@ class Plugin extends JournalCorePlugin {
 
   async _findOrCreatePeriodRecord(collection, periodMode, sourceDate) {
     const periodStart = this._normalizePeriodStart(periodMode, sourceDate);
-    const existing = await this._findRecordByPeriodStart(collection, periodStart);
+    const existing = await this._findRecordByPeriodStart(collection, periodMode, periodStart);
     if (existing) return existing;
 
     const guid = collection.createRecord(this._periodTitle(periodMode, periodStart));
@@ -119,35 +124,40 @@ class Plugin extends JournalCorePlugin {
 
     const record = this.data.getRecord(guid);
     if (record) {
-      this._setPeriodStart(record, periodStart);
+      this._setPeriodMetadata(record, periodMode, periodStart);
       return record;
     }
 
-    this._finalizeCreatedRecord(guid, periodStart);
+    this._finalizeCreatedRecord(guid, periodMode, periodStart);
     return { guid };
   }
 
-  async _finalizeCreatedRecord(guid, periodStart) {
+  async _finalizeCreatedRecord(guid, periodMode, periodStart) {
     const record = await this._waitForRecord(guid);
     if (record) {
-      this._setPeriodStart(record, periodStart);
+      this._setPeriodMetadata(record, periodMode, periodStart);
     }
   }
 
-  _setPeriodStart(record, periodStart) {
+  _setPeriodMetadata(record, periodMode, periodStart) {
     const periodProperty = record.prop('period_start') || record.prop('Period Start');
     if (periodProperty) {
       periodProperty.set(this._dateTimeValue(periodStart));
     }
+
+    const keyProperty = record.prop('period_key') || record.prop('Period Key');
+    if (keyProperty) {
+      keyProperty.set(this._periodKey(periodMode, periodStart));
+    }
   }
 
-  async _findRecordByPeriodStart(collection, targetDate) {
-    const targetKey = this._dateKey(targetDate);
+  async _findRecordByPeriodStart(collection, periodMode, targetDate) {
+    const targetKey = this._periodKey(periodMode, targetDate);
     const records = await collection.getAllRecords();
 
     for (const record of records) {
-      const recordDate = record.date('period_start') || record.date('Period Start');
-      if (recordDate && this._dateKey(recordDate) === targetKey) {
+      const recordKey = this._recordPeriodKey(periodMode, record);
+      if (recordKey === targetKey) {
         return record;
       }
     }
@@ -175,7 +185,27 @@ class Plugin extends JournalCorePlugin {
     return (await this.ui.createPanel(options)) || basePanel;
   }
 
-  _navigateToRecord(guid, ev) {
+  _navigateToRecord(panel, guid) {
+    const workspaceGuid = this.collectionRoot?.wsguid || this.data.getActiveUsers()?.[0]?.workspaceGuid || null;
+    if (!workspaceGuid || !guid || !panel || typeof panel.navigateTo !== 'function') return false;
+
+    try {
+      panel.navigateTo({
+        type: 'edit_panel',
+        rootId: guid,
+        subId: null,
+        workspaceGuid,
+      });
+      if (typeof this.ui.setActivePanel === 'function') {
+        this.ui.setActivePanel(panel);
+      }
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  _navigateToUrl(guid, ev) {
     const workspaceGuid = this.collectionRoot?.wsguid || this.data.getActiveUsers()?.[0]?.workspaceGuid || null;
     if (!workspaceGuid || !guid) return;
 
@@ -188,6 +218,84 @@ class Plugin extends JournalCorePlugin {
     }
 
     window.location.assign(url);
+  }
+
+  _recordPeriodKey(periodMode, record) {
+    if (!record) return null;
+
+    if (typeof record.text === 'function') {
+      const keyText = record.text('period_key') || record.text('Period Key');
+      if (keyText) return keyText;
+    }
+
+    const derivedDate = this._recordPeriodStartFromTitle(periodMode, record);
+    return derivedDate ? this._periodKey(periodMode, derivedDate) : null;
+  }
+
+  _recordPeriodStartFromTitle(periodMode, record) {
+    if (!record) return null;
+
+    let periodStart = null;
+    if (typeof record.date === 'function') {
+      periodStart = record.date('period_start') || record.date('Period Start');
+    }
+    if (!periodStart && typeof record.prop === 'function') {
+      const prop = record.prop('period_start') || record.prop('Period Start');
+      if (prop && typeof prop.date === 'function') {
+        periodStart = prop.date();
+      }
+    }
+    if (periodStart) return this._dateOnly(periodStart);
+
+    const title = typeof record.getName === 'function' ? record.getName() : null;
+    return this._parsePeriodStartFromTitle(periodMode, title);
+  }
+
+  _periodKey(periodMode, date) {
+    const normalized = this._normalizePeriodStart(periodMode, date);
+    if (periodMode === 'weekly') {
+      const info = this._isoWeekInfo(normalized);
+      return `${info.year}-${String(info.week).padStart(2, '0')}`;
+    }
+    if (periodMode === 'monthly') {
+      return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+    }
+    return String(normalized.getFullYear());
+  }
+
+  _parsePeriodStartFromTitle(periodMode, title) {
+    if (!title || typeof title !== 'string') return null;
+
+    if (periodMode === 'weekly') {
+      const match = title.match(/^(\d{4})\s+W(\d{1,2})$/);
+      if (!match) return null;
+      return this._isoWeekStartForYearWeek(Number(match[1]), Number(match[2]));
+    }
+
+    if (periodMode === 'monthly') {
+      const match = title.match(/^([A-Za-z]{3})\s+(\d{4})$/);
+      if (!match) return null;
+      const monthIndex = this._monthIndexFromShortName(match[1]);
+      if (monthIndex === null) return null;
+      return this._dateOnly(new Date(Number(match[2]), monthIndex, 1));
+    }
+
+    const yearMatch = title.match(/^(\d{4})$/);
+    if (!yearMatch) return null;
+    return this._dateOnly(new Date(Number(yearMatch[1]), 0, 1));
+  }
+
+  _monthIndexFromShortName(label) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const index = months.indexOf(label);
+    return index === -1 ? null : index;
+  }
+
+  _isoWeekStartForYearWeek(year, week) {
+    const firstWeekStart = this._startOfIsoWeek(new Date(year, 0, 4));
+    const date = this._dateOnly(firstWeekStart);
+    date.setDate(firstWeekStart.getDate() + ((week - 1) * 7));
+    return this._dateOnly(date);
   }
 
   _periodButtonLabel(periodMode, date) {

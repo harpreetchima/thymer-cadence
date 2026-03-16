@@ -1,4 +1,4 @@
-# Periodic Notes
+# Thymer Cadence Periodic Notes
 
 Reusable Thymer collection plugin for three normal collections:
 
@@ -16,7 +16,10 @@ Planned behavior:
 - Navigation appears only on those specific period pages
 - Weeks use ISO week numbering with Monday start
 - Left and right buttons move relative to the open period record
-- The center button jumps to the current real-world period, mirroring Thymer's native `Today` button behavior
+- The center button stays tied to the current real-world period
+- `Period Start` is auto-populated on create
+- `Period Key` is stored as hidden sort metadata for chronological ordering across views
+- `Period End` is not included yet
 
 Current scaffold:
 
