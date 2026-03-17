@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.0';
+    this._version = '0.4.2';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -47,36 +47,30 @@ class Plugin extends CollectionPlugin {
     this._boundHandlePopupPointerDown = (ev) => this._handlePopupPointerDown(ev);
     this._boundHandlePopupKeyDown = (ev) => this._handlePopupKeyDown(ev);
     this._boundRepositionCalendarPopup = () => this._positionCalendarPopup();
-    this._boundScheduleRelatedTasksRefresh = () => this._scheduleRelatedTasksRefresh();
 
     this.events.on('panel.navigated', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
       this._scheduleRelatedTasksRefresh();
+      this._scheduleRelatedTasksRefresh(250);
     });
     this.events.on('panel.focused', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
       this._scheduleRelatedTasksRefresh();
+      this._scheduleRelatedTasksRefresh(250);
     });
-    this._refreshTimer = setInterval(() => {
-      this._refreshCurrentButton();
-      this._syncActiveRecordPeriodStart();
-    }, 500);
-    this._relatedRefreshInterval = setInterval(() => this._scheduleRelatedTasksRefresh(), 5000);
     this._syncActiveRecordPeriodStart();
     this._scheduleRelatedTasksRefresh();
-    setTimeout(() => this._scheduleRelatedTasksRefresh(), 500);
-    setTimeout(() => this._scheduleRelatedTasksRefresh(), 1500);
+    this._scheduleRelatedTasksRefresh(800);
   }
 
   onUnload() {
     this._closeCalendarPopup();
-    this._lastRelatedQueryKey = null;
-    if (this._refreshTimer) clearInterval(this._refreshTimer);
-    if (this._relatedRefreshInterval) clearInterval(this._relatedRefreshInterval);
+    this._removeRelatedTasksBlock();
+    if (this._relatedTasksRefreshTimer) clearTimeout(this._relatedTasksRefreshTimer);
     if (this._prevButton) this._prevButton.remove();
     if (this._currentButton) this._currentButton.remove();
     if (this._nextButton) this._nextButton.remove();
@@ -141,56 +135,108 @@ class Plugin extends CollectionPlugin {
   }
 
   _scheduleRelatedTasksRefresh() {
-    if (this._relatedTasksRefreshPending) return;
-    this._relatedTasksRefreshPending = true;
-    setTimeout(() => {
-      this._relatedTasksRefreshPending = false;
-      void this._syncRelatedQueryForActiveRecord();
-    }, 0);
+    const delay = typeof arguments[0] === 'number' ? arguments[0] : 0;
+    if (this._relatedTasksRefreshTimer) clearTimeout(this._relatedTasksRefreshTimer);
+    this._relatedTasksRefreshTimer = setTimeout(() => {
+      this._relatedTasksRefreshTimer = null;
+      void this._renderRelatedTasksBlock();
+    }, delay);
   }
 
-  async _syncRelatedQueryForActiveRecord() {
+  async _renderRelatedTasksBlock() {
     const panel = this.ui.getActivePanel();
+    const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
     const record = panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
-    if (!panel) {
+    if (!panel || !host || !record) {
+      this._removeRelatedTasksBlock();
       return;
     }
 
-    let periodStart = record ? this._recordPeriodStart(record) : null;
-    let identity = record?.guid || '';
+    const periodStart = this._recordPeriodStart(record);
     if (!periodStart) {
-      const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
-      const heading = (host?.querySelector('h1')?.textContent || document.querySelector('h1')?.textContent || '').trim();
-      if (!heading) return;
-      periodStart = this._parsePeriodStartFromTitle(heading);
-      identity = heading;
-    }
-    if (!periodStart) {
+      this._removeRelatedTasksBlock();
       return;
     }
 
-    const collection = await this._getCollectionApi();
-    if (!collection || typeof collection.getConfiguration !== 'function' || typeof collection.saveConfiguration !== 'function') {
+    const anchor = this._findRelatedTasksAnchor(host);
+    if (!anchor) {
       return;
     }
 
-    const relatedQuery = this._relatedQueryForPeriodStart(periodStart);
-    const queryKey = `${identity}:${relatedQuery}`;
-    if (this._lastRelatedQueryKey === queryKey) {
+    const tasks = await this._searchRelatedTasks(periodStart);
+    if (!tasks.length) {
+      this._removeRelatedTasksBlock();
       return;
     }
 
-    const currentConfig = collection.getConfiguration() || {};
-    if (currentConfig.related_query === relatedQuery) {
-      this._lastRelatedQueryKey = queryKey;
-      return;
+    const block = this._ensureRelatedTasksBlock(anchor);
+    block.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'cadence-related-title';
+    title.textContent = 'Upcoming';
+    block.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'cadence-related-list';
+    block.appendChild(list);
+
+    for (const task of tasks) {
+      list.appendChild(this._createRelatedTaskRow(task, panel));
+    }
+  }
+
+  _findRelatedTasksAnchor(host) {
+    return host.querySelector('h1') || document.querySelector('h1');
+  }
+
+  _ensureRelatedTasksBlock(anchor) {
+    if (!this._relatedTasksBlockElement || !this._relatedTasksBlockElement.isConnected) {
+      this._relatedTasksBlockElement = document.createElement('section');
+      this._relatedTasksBlockElement.className = 'cadence-related-block';
+    }
+    if (anchor.nextElementSibling !== this._relatedTasksBlockElement) {
+      anchor.insertAdjacentElement('afterend', this._relatedTasksBlockElement);
+    }
+    return this._relatedTasksBlockElement;
+  }
+
+  _removeRelatedTasksBlock() {
+    if (this._relatedTasksBlockElement && this._relatedTasksBlockElement.isConnected) {
+      this._relatedTasksBlockElement.remove();
+    }
+    this._relatedTasksBlockElement = null;
+  }
+
+  async _searchRelatedTasks(periodStart) {
+    const nextBoundary = this._nextPeriodBoundary(periodStart);
+    const query = `@due AND @due < "${this._dateKey(nextBoundary)}"`;
+    const results = await this.data.searchByQuery(query, 200);
+    if (results.error) {
+      this._toast('Thymer Cadence', results.error);
+      return [];
     }
 
-    const nextConfig = { ...currentConfig, related_query: relatedQuery };
-    const ok = await collection.saveConfiguration(nextConfig);
-    if (ok) {
-      this._lastRelatedQueryKey = queryKey;
-    }
+    const seen = new Set();
+    return results.lines
+      .filter((line) => line && line.type === 'task')
+      .filter((line) => {
+        if (seen.has(line.guid)) return false;
+        seen.add(line.guid);
+        return true;
+      })
+      .map((line) => ({
+        line,
+        dueDate: this._extractLineDueDate(line),
+        text: this._plainTaskText(line),
+      }))
+      .sort((a, b) => {
+        const aTime = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+        const bTime = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
+        if (aTime !== bTime) return aTime - bTime;
+        return a.text.localeCompare(b.text);
+      })
+      .slice(0, 24);
   }
 
   _nextPeriodBoundary(periodStart) {
@@ -207,9 +253,130 @@ class Plugin extends CollectionPlugin {
     return this._dateOnly(new Date(base.getFullYear() + 1, 0, 1));
   }
 
-  _relatedQueryForPeriodStart(periodStart) {
-    const nextBoundary = this._nextPeriodBoundary(periodStart);
-    return `@due AND @due < "${this._dateKey(nextBoundary)}"`;
+  _createRelatedTaskRow(task, panel) {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'cadence-related-item';
+    row.setAttribute('aria-label', task.text || 'Open related task');
+
+    const checkbox = document.createElement('span');
+    checkbox.className = 'cadence-related-checkbox ti ti-square';
+    checkbox.setAttribute('aria-hidden', 'true');
+    row.appendChild(checkbox);
+
+    const textWrap = document.createElement('span');
+    textWrap.className = 'cadence-related-text';
+    textWrap.textContent = task.text || 'Untitled task';
+    row.appendChild(textWrap);
+
+    const meta = document.createElement('span');
+    meta.className = 'cadence-related-meta';
+    if (task.dueDate) {
+      const due = document.createElement('span');
+      due.className = 'cadence-related-date';
+      due.textContent = this._formatRelatedDueDate(task.dueDate);
+      meta.appendChild(due);
+    }
+    const arrow = document.createElement('span');
+    arrow.className = 'cadence-related-arrow ti ti-arrow-up-right';
+    arrow.setAttribute('aria-hidden', 'true');
+    meta.appendChild(arrow);
+    row.appendChild(meta);
+
+    row.addEventListener('click', (ev) => {
+      void this._openRelatedTask(ev, task.line, panel);
+    });
+    return row;
+  }
+
+  async _openRelatedTask(ev, line, panel) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const targetPanel = await this._getTargetPanel(panel, ev);
+    if (targetPanel && typeof targetPanel.navigateTo === 'function') {
+      try {
+        const ok = await targetPanel.navigateTo({ itemGuid: line.guid, highlight: true });
+        if (ok) {
+          if (typeof this.ui.setActivePanel === 'function') {
+            this.ui.setActivePanel(targetPanel);
+          }
+          return;
+        }
+      } catch (error) {
+        // ignore and fall through
+      }
+    }
+
+    const record = line.getRecord ? line.getRecord() : null;
+    if (record && targetPanel && this._navigateToRecord(targetPanel, record.guid)) {
+      return;
+    }
+    if (record) {
+      this._navigateToUrl(record.guid, ev);
+    }
+  }
+
+  _extractLineDueDate(line) {
+    const segments = Array.isArray(line.segments) ? [...line.segments].reverse() : [];
+    for (const segment of segments) {
+      const parsed = this._dateFromSegmentValue(segment?.type === 'datetime' ? segment.text : null);
+      if (parsed) return parsed;
+    }
+
+    const rawValues = line.props && typeof line.props === 'object' ? Object.values(line.props) : [];
+    for (const value of rawValues) {
+      const parsed = this._dateFromSegmentValue(value);
+      if (parsed) return parsed;
+    }
+    return null;
+  }
+
+  _dateFromSegmentValue(value) {
+    if (!value || typeof value !== 'object' || typeof value.d !== 'string' || value.d.length !== 8) return null;
+    const year = Number(value.d.slice(0, 4));
+    const month = Number(value.d.slice(4, 6));
+    const day = Number(value.d.slice(6, 8));
+    if (!year || !month || !day) return null;
+    return this._dateOnly(new Date(year, month - 1, day));
+  }
+
+  _plainTaskText(line) {
+    const parts = [];
+    for (const segment of Array.isArray(line.segments) ? line.segments : []) {
+      if (!segment || segment.type === 'datetime') continue;
+      const value = segment.text;
+      if (segment.type === 'mention' && typeof value === 'string') {
+        parts.push(`@${this._userLabel(value)}`);
+        continue;
+      }
+      if (segment.type === 'ref' && value && typeof value === 'object') {
+        const title = typeof value.title === 'string' ? value.title : '';
+        parts.push(title || '[Link]');
+        continue;
+      }
+      if (segment.type === 'linkobj' && value && typeof value === 'object') {
+        parts.push(String(value.title || value.link || ''));
+        continue;
+      }
+      if (typeof value === 'string') {
+        parts.push(value);
+      }
+    }
+
+    return parts.join('').replace(/\s+/g, ' ').trim();
+  }
+
+  _userLabel(guid) {
+    const user = (this.data.getActiveUsers?.() || []).find((candidate) => candidate && candidate.guid === guid);
+    return user?.getName?.() || guid;
+  }
+
+  _formatRelatedDueDate(date) {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).replace(',', '');
   }
 
   _handlePopupPointerDown(ev) {

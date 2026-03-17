@@ -4,9 +4,7 @@
   "icon": "ti-calendar",
   "color": null,
   "home": false,
-  "page_field_ids": [
-    "period_start"
-  ],
+  "page_field_ids": [],
   "item_name": "Month",
   "description": "Monthly notes with compact month navigation",
   "show_sidebar_items": true,
@@ -18,7 +16,7 @@
       "label": "Title",
       "many": false,
       "read_only": false,
-      "active": true,
+      "active": false,
       "type": "text"
     },
     {

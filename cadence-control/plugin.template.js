@@ -7,7 +7,7 @@ const PERIODIC_PLUGIN_TEMPLATES = __PERIODIC_PLUGIN_TEMPLATES__;
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.0';
+    this._version = '0.1.1';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -33,13 +33,6 @@ class Plugin extends AppPlugin {
         }
       },
     }));
-
-    const savedOptions = this._getWorkspaceOptions();
-    if (savedOptions.setupComplete && savedOptions.daily.collectionGuid) {
-      setTimeout(() => {
-        void this._syncFromSavedSettings();
-      }, 900);
-    }
 
     setTimeout(() => {
       void this._maybePromptSetup();
@@ -88,17 +81,6 @@ class Plugin extends AppPlugin {
 
     this._toast('Thymer Cadence', 'Choose your Daily Notes collection to finish setup.', 4500);
     await this.openSettingsPanel({ newPanel: true });
-  }
-
-  async _syncFromSavedSettings() {
-    const options = this._getWorkspaceOptions();
-    if (!options.setupComplete || !options.daily.collectionGuid) return;
-
-    try {
-      await this._applyWorkspaceOptions(options, { showToasts: false, persistConfig: false });
-    } catch (error) {
-      this._toast('Thymer Cadence', error?.message || 'Could not re-sync the saved Cadence settings.', 5000);
-    }
   }
 
   async openSettingsPanel(options) {
@@ -822,7 +804,8 @@ class Plugin extends AppPlugin {
     this._ensureCadenceView(conf, periodMode, settings);
     conf.sidebar_record_sort_field_id = settings.orderFieldId || 'period_key';
     conf.sidebar_record_sort_dir = 'desc';
-    conf.page_field_ids = this._unique([settings.periodStartFieldId || 'period_start'].concat(conf.page_field_ids || []));
+    conf.page_field_ids = [];
+    conf.related_query = '';
 
     const ok = await collection.savePlugin(conf, PERIODIC_RUNTIME_CODE);
     if (!ok) {
@@ -838,7 +821,7 @@ class Plugin extends AppPlugin {
       label: 'Period Start',
       type: 'datetime',
       icon: 'ti-calendar',
-      active: true,
+      active: false,
       many: false,
       read_only: false,
     });
