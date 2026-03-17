@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.2';
+    this._version = '0.4.4';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -47,11 +47,13 @@ class Plugin extends CollectionPlugin {
     this._boundHandlePopupPointerDown = (ev) => this._handlePopupPointerDown(ev);
     this._boundHandlePopupKeyDown = (ev) => this._handlePopupKeyDown(ev);
     this._boundRepositionCalendarPopup = () => this._positionCalendarPopup();
+    this._boundObservePanelDom = () => this._observeActivePanelDom();
 
     this.events.on('panel.navigated', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
+      this._observeActivePanelDom();
       this._scheduleRelatedTasksRefresh();
       this._scheduleRelatedTasksRefresh(250);
     });
@@ -59,10 +61,12 @@ class Plugin extends CollectionPlugin {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
+      this._observeActivePanelDom();
       this._scheduleRelatedTasksRefresh();
       this._scheduleRelatedTasksRefresh(250);
     });
     this._syncActiveRecordPeriodStart();
+    this._observeActivePanelDom();
     this._scheduleRelatedTasksRefresh();
     this._scheduleRelatedTasksRefresh(800);
   }
@@ -71,6 +75,7 @@ class Plugin extends CollectionPlugin {
     this._closeCalendarPopup();
     this._removeRelatedTasksBlock();
     if (this._relatedTasksRefreshTimer) clearTimeout(this._relatedTasksRefreshTimer);
+    if (this._panelDomObserver) this._panelDomObserver.disconnect();
     if (this._prevButton) this._prevButton.remove();
     if (this._currentButton) this._currentButton.remove();
     if (this._nextButton) this._nextButton.remove();
@@ -143,8 +148,28 @@ class Plugin extends CollectionPlugin {
     }, delay);
   }
 
+  _observeActivePanelDom() {
+    if (typeof MutationObserver !== 'function') return;
+    const panel = this._getRelevantPeriodPanel();
+    const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
+    if (!panel || !host) return;
+
+    const panelId = typeof panel.getId === 'function' ? panel.getId() : null;
+    if (this._panelDomObserver && this._observedPanelId === panelId) return;
+
+    if (this._panelDomObserver) {
+      this._panelDomObserver.disconnect();
+    }
+
+    this._observedPanelId = panelId;
+    this._panelDomObserver = new MutationObserver(() => {
+      this._scheduleRelatedTasksRefresh(120);
+    });
+    this._panelDomObserver.observe(host, { childList: true, subtree: true });
+  }
+
   async _renderRelatedTasksBlock() {
-    const panel = this.ui.getActivePanel();
+    const panel = this._getRelevantPeriodPanel();
     const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
     const record = panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
     if (!panel || !host || !record) {
@@ -188,6 +213,34 @@ class Plugin extends CollectionPlugin {
 
   _findRelatedTasksAnchor(host) {
     return host.querySelector('h1') || document.querySelector('h1');
+  }
+
+  _getRelevantPeriodPanel() {
+    const active = this.ui.getActivePanel();
+    if (this._panelMatchesThisCollection(active)) return active;
+
+    const panels = typeof this.ui.getPanels === 'function' ? this.ui.getPanels() : [];
+    return panels.find((panel) => this._panelMatchesThisCollection(panel)) || active;
+  }
+
+  _panelMatchesThisCollection(panel) {
+    if (!panel) return false;
+
+    const record = typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
+    if (record) {
+      const collection = typeof record.getCollection === 'function' ? record.getCollection() : null;
+      if (collection && typeof collection.getGuid === 'function' && collection.getGuid() === this.guid) {
+        return true;
+      }
+    }
+
+    const navigation = typeof panel.getNavigation === 'function' ? panel.getNavigation() : null;
+    const rootId = navigation && typeof navigation.rootId === 'string' ? navigation.rootId : null;
+    if (!rootId) return false;
+
+    const navRecord = this.data.getRecord(rootId);
+    const navCollection = navRecord && typeof navRecord.getCollection === 'function' ? navRecord.getCollection() : null;
+    return !!(navCollection && typeof navCollection.getGuid === 'function' && navCollection.getGuid() === this.guid);
   }
 
   _ensureRelatedTasksBlock(anchor) {
