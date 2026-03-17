@@ -18,6 +18,11 @@
   padding: 10px 12px 10px;
 }
 
+.cmdpal--inline.cadence-datepicker-popup .id--datepicker .datepicker-startend,
+.cmdpal--inline.cadence-datepicker-popup .id--datepicker .id--startend {
+  display: none !important;
+}
+
 .cmdpal--inline.cadence-datepicker-popup .id--datepicker .datepicker-wrapper.cadence-datepicker-enhanced .datepicker-header {
   gap: 10px;
   margin-bottom: 8px;
@@ -125,8 +130,8 @@
 .cmdpal--inline.cadence-datepicker-popup .id--datepicker .datepicker-weekdays,
 .cmdpal--inline.cadence-datepicker-popup .id--datepicker .datepicker-days {
   display: grid;
-  grid-template-columns: 20px repeat(7, 28px);
-  column-gap: 4px;
+  grid-template-columns: 24px repeat(7, 28px);
+  column-gap: 6px;
   width: max-content;
 }
 
