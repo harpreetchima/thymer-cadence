@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.8';
+    this._version = '0.4.9';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -163,35 +163,38 @@ class Plugin extends CollectionPlugin {
     }
   }
 
-  async _searchRelatedTasks(periodStart) {
+  getRelatedItemsSearchQuery(recordGuid) {
+    const record = this._resolveRelatedRecord(recordGuid);
+    const pageGuid = record?.guid || (typeof record?.getGuid === 'function' ? record.getGuid() : null);
+    const periodStart = this._recordPeriodStart(record);
+    if (!periodStart || !pageGuid) return null;
+
     const nextBoundary = this._nextPeriodBoundary(periodStart);
-    const query = `@due AND @due < "${this._dateKey(nextBoundary)}"`;
-    const results = await this.data.searchByQuery(query, 200);
-    if (results.error) {
-      this._toast('Thymer Cadence', results.error);
-      return [];
+    return [
+      '@todo',
+      '@due',
+      `@due < ${this._quoteQueryValue(this._dateKey(nextBoundary))}`,
+      `@backref!=${this._quoteQueryValue(pageGuid)}`,
+    ].join(' && ');
+  }
+
+  getRelatedSectionTitle() {
+    return 'Upcoming';
+  }
+
+  getRelatedSectionDescription() {
+    return `Shows due and overdue tasks through the end of this ${this._periodWord()}`;
+  }
+
+  _resolveRelatedRecord(recordGuid) {
+    if (recordGuid && typeof recordGuid === 'object') return recordGuid;
+    if (typeof recordGuid === 'string') {
+      const record = this.data.getRecord(recordGuid);
+      if (record) return record;
     }
 
-    const seen = new Set();
-    return results.lines
-      .filter((line) => line && line.type === 'task')
-      .filter((line) => {
-        if (seen.has(line.guid)) return false;
-        seen.add(line.guid);
-        return true;
-      })
-      .map((line) => ({
-        line,
-        dueDate: this._extractLineDueDate(line),
-        text: this._plainTaskText(line),
-      }))
-      .sort((a, b) => {
-        const aTime = a.dueDate ? a.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
-        const bTime = b.dueDate ? b.dueDate.getTime() : Number.MAX_SAFE_INTEGER;
-        if (aTime !== bTime) return aTime - bTime;
-        return a.text.localeCompare(b.text);
-      })
-      .slice(0, 24);
+    const panel = this._getRelevantPeriodPanel();
+    return panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
   }
 
   _nextPeriodBoundary(periodStart) {
@@ -208,67 +211,8 @@ class Plugin extends CollectionPlugin {
     return this._dateOnly(new Date(base.getFullYear() + 1, 0, 1));
   }
 
-  _extractLineDueDate(line) {
-    const segments = Array.isArray(line.segments) ? [...line.segments].reverse() : [];
-    for (const segment of segments) {
-      const parsed = this._dateFromSegmentValue(segment?.type === 'datetime' ? segment.text : null);
-      if (parsed) return parsed;
-    }
-
-    const rawValues = line.props && typeof line.props === 'object' ? Object.values(line.props) : [];
-    for (const value of rawValues) {
-      const parsed = this._dateFromSegmentValue(value);
-      if (parsed) return parsed;
-    }
-    return null;
-  }
-
-  _dateFromSegmentValue(value) {
-    if (!value || typeof value !== 'object' || typeof value.d !== 'string' || value.d.length !== 8) return null;
-    const year = Number(value.d.slice(0, 4));
-    const month = Number(value.d.slice(4, 6));
-    const day = Number(value.d.slice(6, 8));
-    if (!year || !month || !day) return null;
-    return this._dateOnly(new Date(year, month - 1, day));
-  }
-
-  _plainTaskText(line) {
-    const parts = [];
-    for (const segment of Array.isArray(line.segments) ? line.segments : []) {
-      if (!segment || segment.type === 'datetime') continue;
-      const value = segment.text;
-      if (segment.type === 'mention' && typeof value === 'string') {
-        parts.push(`@${this._userLabel(value)}`);
-        continue;
-      }
-      if (segment.type === 'ref' && value && typeof value === 'object') {
-        const title = typeof value.title === 'string' ? value.title : '';
-        parts.push(title || '[Link]');
-        continue;
-      }
-      if (segment.type === 'linkobj' && value && typeof value === 'object') {
-        parts.push(String(value.title || value.link || ''));
-        continue;
-      }
-      if (typeof value === 'string') {
-        parts.push(value);
-      }
-    }
-
-    return parts.join('').replace(/\s+/g, ' ').trim();
-  }
-
-  _userLabel(guid) {
-    const user = (this.data.getActiveUsers?.() || []).find((candidate) => candidate && candidate.guid === guid);
-    return user?.getName?.() || guid;
-  }
-
-  _formatRelatedDueDate(date) {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    }).replace(',', '');
+  _quoteQueryValue(value) {
+    return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`;
   }
 
   _handlePopupPointerDown(ev) {
