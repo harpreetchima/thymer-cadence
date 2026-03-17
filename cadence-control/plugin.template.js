@@ -178,7 +178,7 @@ class Plugin extends AppPlugin {
           <div class="cadence-header">
             <div>
               <div class="cadence-title">Thymer Cadence</div>
-              <div class="text-details cadence-subtitle">Configure the Daily Notes upgrade, enable or disable weekly/monthly/yearly notes, and create or adopt collections without manual code edits.</div>
+              <div class="text-details cadence-subtitle">Configure the Daily Notes upgrade, enable or disable weekly/monthly/quarterly/yearly notes, and create or adopt collections without manual code edits.</div>
             </div>
             <div class="cadence-header-actions">
               <button type="button" class="button-normal button-normal-hover button-small cadence-action-autodetect">Auto-detect</button>
@@ -189,6 +189,7 @@ class Plugin extends AppPlugin {
           ${this._renderDailySection(state, dailyChoices)}
           ${this._renderPeriodSection('weekly', state, periodChoices)}
           ${this._renderPeriodSection('monthly', state, periodChoices)}
+          ${this._renderPeriodSection('quarterly', state, periodChoices)}
           ${this._renderPeriodSection('yearly', state, periodChoices)}
         </div>
       `;
@@ -376,7 +377,7 @@ class Plugin extends AppPlugin {
           <div class="form-field">
             <div class="text-details cadence-field-label">Title format</div>
             <input class="form-input w-full" data-role="title-format" data-mode="${periodMode}" value="${this._escapeHtml(settings.titleFormat)}" placeholder="${this._escapeHtml(this._defaultTitleFormat(periodMode))}">
-            <div class="text-details cadence-help">Supported subset: <code>GGGG</code>, <code>YYYY</code>, <code>YY</code>, <code>M</code>, <code>MM</code>, <code>MMM</code>, <code>MMMM</code>, <code>W</code>, <code>WW</code>, plus literals in square brackets. Preview: <strong>${this._escapeHtml(this._formatPeriodTitle(periodMode, new Date(), settings.titleFormat))}</strong></div>
+            <div class="text-details cadence-help">Supported subset: <code>GGGG</code>, <code>YYYY</code>, <code>YY</code>, <code>Q</code>, <code>M</code>, <code>MM</code>, <code>MMM</code>, <code>MMMM</code>, <code>W</code>, <code>WW</code>, plus literals in square brackets. Preview: <strong>${this._escapeHtml(this._formatPeriodTitle(periodMode, new Date(), settings.titleFormat))}</strong></div>
           </div>
           <div class="form-field">
             <div class="text-details cadence-field-label">Order field</div>
@@ -393,12 +394,13 @@ class Plugin extends AppPlugin {
   }
 
   _periodModes() {
-    return ['weekly', 'monthly', 'yearly'];
+    return ['weekly', 'monthly', 'quarterly', 'yearly'];
   }
 
   _periodLabel(periodMode) {
     if (periodMode === 'weekly') return 'Weekly';
     if (periodMode === 'monthly') return 'Monthly';
+    if (periodMode === 'quarterly') return 'Quarterly';
     return 'Yearly';
   }
 
@@ -409,18 +411,23 @@ class Plugin extends AppPlugin {
     if (periodMode === 'monthly') {
       return 'Enable monthly notes and add month links across Daily, Weekly, Monthly, and Yearly surfaces.';
     }
+    if (periodMode === 'quarterly') {
+      return 'Enable quarterly notes and add quarter links across Daily Notes and every Cadence popup.';
+    }
     return 'Enable yearly notes and add year links where Cadence surfaces period navigation.';
   }
 
   _defaultCollectionName(periodMode) {
     if (periodMode === 'weekly') return 'Weekly Notes';
     if (periodMode === 'monthly') return 'Monthly Notes';
+    if (periodMode === 'quarterly') return 'Quarterly Notes';
     return 'Yearly Notes';
   }
 
   _defaultTitleFormat(periodMode) {
     if (periodMode === 'weekly') return 'GGGG-[W]WW';
     if (periodMode === 'monthly') return 'MMM YYYY';
+    if (periodMode === 'quarterly') return 'YYYY-[Q]Q';
     return 'YYYY';
   }
 
@@ -435,6 +442,7 @@ class Plugin extends AppPlugin {
       periods: {
         weekly: this._defaultPeriodOptions('weekly'),
         monthly: this._defaultPeriodOptions('monthly'),
+        quarterly: this._defaultPeriodOptions('quarterly'),
         yearly: this._defaultPeriodOptions('yearly'),
       },
     };
@@ -696,8 +704,8 @@ class Plugin extends AppPlugin {
       }
     }
 
-    if (!current.periods.weekly.enabled && !current.periods.monthly.enabled && !current.periods.yearly.enabled) {
-      warnings.push('Cadence is installed, but no weekly/monthly/yearly collections are enabled yet.');
+    if (!current.periods.weekly.enabled && !current.periods.monthly.enabled && !current.periods.quarterly.enabled && !current.periods.yearly.enabled) {
+      warnings.push('Cadence is installed, but no weekly/monthly/quarterly/yearly collections are enabled yet.');
     }
 
     return { errors, warnings };
@@ -969,6 +977,11 @@ class Plugin extends AppPlugin {
       if (!match) return null;
       return this._dateOnly(new Date(Number(match[1]), Number(match[2]) - 1, 1));
     }
+    if (periodMode === 'quarterly') {
+      const match = value.match(/^(\d{4})-Q([1-4])$/i);
+      if (!match) return null;
+      return this._quarterStartForYearQuarter(Number(match[1]), Number(match[2]));
+    }
     const match = value.match(/^(\d{4})$/);
     if (!match) return null;
     return this._dateOnly(new Date(Number(match[1]), 0, 1));
@@ -988,6 +1001,13 @@ class Plugin extends AppPlugin {
       const monthIndex = this._monthIndexFromShortName(match[1]);
       if (monthIndex === null) return null;
       return this._dateOnly(new Date(Number(match[2]), monthIndex, 1));
+    }
+    if (periodMode === 'quarterly') {
+      const match = value.match(/^(?:Q([1-4])\s+(\d{4})|(\d{4})[-\s]Q([1-4]))$/i);
+      if (!match) return null;
+      const year = Number(match[2] || match[3]);
+      const quarter = Number(match[1] || match[4]);
+      return this._quarterStartForYearQuarter(year, quarter);
     }
     const match = value.match(/^(\d{4})$/);
     if (!match) return null;
@@ -1072,6 +1092,9 @@ class Plugin extends AppPlugin {
     if (periodMode === 'monthly') {
       return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
     }
+    if (periodMode === 'quarterly') {
+      return `${normalized.getFullYear()}-Q${this._quarterOfDate(normalized)}`;
+    }
     return String(normalized.getFullYear());
   }
 
@@ -1079,6 +1102,7 @@ class Plugin extends AppPlugin {
     const date = this._dateOnly(inputDate);
     if (periodMode === 'weekly') return this._startOfIsoWeek(date);
     if (periodMode === 'monthly') return this._dateOnly(new Date(date.getFullYear(), date.getMonth(), 1));
+    if (periodMode === 'quarterly') return this._quarterStartForDate(date);
     return this._dateOnly(new Date(date.getFullYear(), 0, 1));
   }
 
@@ -1092,6 +1116,7 @@ class Plugin extends AppPlugin {
       gggg: String(info.year),
       YYYY: String(normalized.getFullYear()),
       YY: String(normalized.getFullYear()).slice(-2),
+      Q: String(this._quarterOfDate(normalized)),
       MMMM: monthLong,
       MMM: monthShort,
       MM: String(normalized.getMonth() + 1).padStart(2, '0'),
@@ -1120,7 +1145,7 @@ class Plugin extends AppPlugin {
       }
 
       let matched = false;
-      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY']) {
+      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY', 'Q']) {
         if (!source.startsWith(token, index)) continue;
         output += replacements[token] ?? token;
         index += token.length;
@@ -1158,6 +1183,18 @@ class Plugin extends AppPlugin {
     const date = this._dateOnly(firstWeekStart);
     date.setDate(firstWeekStart.getDate() + ((week - 1) * 7));
     return this._dateOnly(date);
+  }
+
+  _quarterOfDate(date) {
+    return Math.floor(date.getMonth() / 3) + 1;
+  }
+
+  _quarterStartForDate(date) {
+    return this._dateOnly(new Date(date.getFullYear(), (this._quarterOfDate(date) - 1) * 3, 1));
+  }
+
+  _quarterStartForYearQuarter(year, quarter) {
+    return this._dateOnly(new Date(year, (quarter - 1) * 3, 1));
   }
 
   _monthIndexFromShortName(label) {

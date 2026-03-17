@@ -1,5 +1,6 @@
 .panel-menubar-buttons button[data-tooltip-html^="Open weekly note"],
 .panel-menubar-buttons button[data-tooltip-html^="Open monthly note"],
+.panel-menubar-buttons button[data-tooltip-html^="Open quarterly note"],
 .panel-menubar-buttons button[data-tooltip-html^="Open yearly note"] {
   padding-left: 5px;
   padding-right: 5px;

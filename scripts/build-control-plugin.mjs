@@ -11,6 +11,7 @@ const dailyConfig = JSON.parse(readFileSync(`${root}/daily-note/plugin.json`, 'u
 const periodicConfigs = {
   weekly: JSON.parse(readFileSync(`${root}/periodic-notes/plugin.weekly.json`, 'utf8')),
   monthly: JSON.parse(readFileSync(`${root}/periodic-notes/plugin.monthly.json`, 'utf8')),
+  quarterly: JSON.parse(readFileSync(`${root}/periodic-notes/plugin.quarterly.json`, 'utf8')),
   yearly: JSON.parse(readFileSync(`${root}/periodic-notes/plugin.yearly.json`, 'utf8')),
 }
 

@@ -1,12 +1,13 @@
 class Plugin extends JournalCorePlugin {
   onLoad() {
-    this._version = '0.2.0';
+    this._version = '0.3.0';
     if (typeof super.onLoad === 'function') super.onLoad();
 
     this._cadenceConfig = this._getCadenceConfig();
 
     this._weeklyButton = this._createPeriodButton('weekly');
     this._monthlyButton = this._createPeriodButton('monthly');
+    this._quarterlyButton = this._createPeriodButton('quarterly');
     this._yearlyButton = this._createPeriodButton('yearly');
 
     this.events.on('panel.navigated', () => this._refreshButtons());
@@ -20,6 +21,7 @@ class Plugin extends JournalCorePlugin {
     if (this._datepickerPatchTimer) clearTimeout(this._datepickerPatchTimer);
     if (this._weeklyButton) this._weeklyButton.remove();
     if (this._monthlyButton) this._monthlyButton.remove();
+    if (this._quarterlyButton) this._quarterlyButton.remove();
     if (this._yearlyButton) this._yearlyButton.remove();
   }
 
@@ -103,17 +105,20 @@ class Plugin extends JournalCorePlugin {
       links.className = 'cadence-datepicker-links';
       links.innerHTML = [
         '<button class="cadence-datepicker-link cadence-datepicker-month" type="button"></button>',
+        '<button class="cadence-datepicker-link cadence-datepicker-quarter" type="button"></button>',
         '<button class="cadence-datepicker-link cadence-datepicker-year" type="button"></button>',
       ].join('');
       header.insertBefore(links, currentMonthTrigger);
     }
 
     const monthButton = links.querySelector('.cadence-datepicker-month');
+    const quarterButton = links.querySelector('.cadence-datepicker-quarter');
     const yearButton = links.querySelector('.cadence-datepicker-year');
     links.querySelector('.cadence-datepicker-dot')?.remove();
-    if (!monthButton || !yearButton) return;
+    if (!monthButton || !quarterButton || !yearButton) return;
 
     this._syncDatepickerPeriodLink(monthButton, 'monthly', displayedDate.toLocaleDateString('en-US', { month: 'long' }), displayedDate);
+    this._syncDatepickerPeriodLink(quarterButton, 'quarterly', this._periodButtonLabel('quarterly', displayedDate), displayedDate);
     this._syncDatepickerPeriodLink(yearButton, 'yearly', String(displayedDate.getFullYear()), displayedDate);
     currentMonthTrigger.title = 'Open month and year picker';
   }
@@ -291,6 +296,7 @@ class Plugin extends JournalCorePlugin {
 
     this._refreshButton(this._weeklyButton, 'weekly', sourceDate);
     this._refreshButton(this._monthlyButton, 'monthly', sourceDate);
+    this._refreshButton(this._quarterlyButton, 'quarterly', sourceDate);
     this._refreshButton(this._yearlyButton, 'yearly', sourceDate);
   }
 
@@ -526,6 +532,9 @@ class Plugin extends JournalCorePlugin {
     if (periodMode === 'monthly') {
       return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
     }
+    if (periodMode === 'quarterly') {
+      return `${normalized.getFullYear()}-Q${this._quarterOfDate(normalized)}`;
+    }
     return String(normalized.getFullYear());
   }
 
@@ -546,6 +555,14 @@ class Plugin extends JournalCorePlugin {
       return this._dateOnly(new Date(Number(match[2]), monthIndex, 1));
     }
 
+    if (periodMode === 'quarterly') {
+      const match = title.match(/^(?:Q([1-4])\s+(\d{4})|(\d{4})[-\s]Q([1-4]))$/i);
+      if (!match) return null;
+      const year = Number(match[2] || match[3]);
+      const quarter = Number(match[1] || match[4]);
+      return this._quarterStartForYearQuarter(year, quarter);
+    }
+
     const yearMatch = title.match(/^(\d{4})$/);
     if (!yearMatch) return null;
     return this._dateOnly(new Date(Number(yearMatch[1]), 0, 1));
@@ -564,6 +581,18 @@ class Plugin extends JournalCorePlugin {
     return this._dateOnly(date);
   }
 
+  _quarterOfDate(date) {
+    return Math.floor(date.getMonth() / 3) + 1;
+  }
+
+  _quarterStartForDate(date) {
+    return this._dateOnly(new Date(date.getFullYear(), (this._quarterOfDate(date) - 1) * 3, 1));
+  }
+
+  _quarterStartForYearQuarter(year, quarter) {
+    return this._dateOnly(new Date(year, (quarter - 1) * 3, 1));
+  }
+
   _periodButtonLabel(periodMode, date) {
     if (periodMode === 'weekly') {
       return `W${this._isoWeekInfo(date).week}`;
@@ -571,6 +600,10 @@ class Plugin extends JournalCorePlugin {
 
     if (periodMode === 'monthly') {
       return date.toLocaleDateString('en-US', { month: 'short' });
+    }
+
+    if (periodMode === 'quarterly') {
+      return `Q${this._quarterOfDate(date)}`;
     }
 
     return String(date.getFullYear());
@@ -586,6 +619,10 @@ class Plugin extends JournalCorePlugin {
       return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
     }
 
+    if (periodMode === 'quarterly') {
+      return `Q${this._quarterOfDate(date)} ${date.getFullYear()}`;
+    }
+
     return String(date.getFullYear());
   }
 
@@ -599,6 +636,7 @@ class Plugin extends JournalCorePlugin {
 
     if (periodMode === 'weekly') return this._startOfIsoWeek(date);
     if (periodMode === 'monthly') return this._dateOnly(new Date(date.getFullYear(), date.getMonth(), 1));
+    if (periodMode === 'quarterly') return this._quarterStartForDate(date);
     return this._dateOnly(new Date(date.getFullYear(), 0, 1));
   }
 
@@ -657,7 +695,7 @@ class Plugin extends JournalCorePlugin {
     const cadence = custom.cadence && typeof custom.cadence === 'object' ? custom.cadence : {};
     const periods = {};
 
-    for (const periodMode of ['weekly', 'monthly', 'yearly']) {
+    for (const periodMode of ['weekly', 'monthly', 'quarterly', 'yearly']) {
       const source = cadence.periods?.[periodMode] || {};
       const collectionGuid = source.collectionGuid || custom[`${periodMode}CollectionGuid`] || '';
       const collectionName = source.collectionName || custom[`${periodMode}CollectionName`] || this._defaultCollectionName(periodMode);
@@ -703,24 +741,28 @@ class Plugin extends JournalCorePlugin {
   _defaultCollectionName(periodMode) {
     if (periodMode === 'weekly') return 'Weekly Notes';
     if (periodMode === 'monthly') return 'Monthly Notes';
+    if (periodMode === 'quarterly') return 'Quarterly Notes';
     return 'Yearly Notes';
   }
 
   _defaultTitleFormat(periodMode) {
     if (periodMode === 'weekly') return 'GGGG-[W]WW';
     if (periodMode === 'monthly') return 'MMM YYYY';
+    if (periodMode === 'quarterly') return 'YYYY-[Q]Q';
     return 'YYYY';
   }
 
   _buttonPlaceholder(periodMode) {
     if (periodMode === 'weekly') return 'W';
     if (periodMode === 'monthly') return 'Mon';
+    if (periodMode === 'quarterly') return 'Q';
     return 'YYYY';
   }
 
   _periodLabel(periodMode) {
     if (periodMode === 'weekly') return 'Weekly';
     if (periodMode === 'monthly') return 'Monthly';
+    if (periodMode === 'quarterly') return 'Quarterly';
     return 'Yearly';
   }
 
@@ -773,6 +815,7 @@ class Plugin extends JournalCorePlugin {
       gggg: String(info.year),
       YYYY: String(normalized.getFullYear()),
       YY: String(normalized.getFullYear()).slice(-2),
+      Q: String(this._quarterOfDate(normalized)),
       MMMM: monthLong,
       MMM: monthShort,
       MM: String(normalized.getMonth() + 1).padStart(2, '0'),
@@ -801,7 +844,7 @@ class Plugin extends JournalCorePlugin {
       }
 
       let matched = false;
-      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY']) {
+      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY', 'Q']) {
         if (!source.startsWith(token, index)) continue;
         output += replacements[token] ?? token;
         index += token.length;

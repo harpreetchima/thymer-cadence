@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.3.0';
+    this._version = '0.4.0';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -47,27 +47,36 @@ class Plugin extends CollectionPlugin {
     this._boundHandlePopupPointerDown = (ev) => this._handlePopupPointerDown(ev);
     this._boundHandlePopupKeyDown = (ev) => this._handlePopupKeyDown(ev);
     this._boundRepositionCalendarPopup = () => this._positionCalendarPopup();
+    this._boundScheduleRelatedTasksRefresh = () => this._scheduleRelatedTasksRefresh();
 
     this.events.on('panel.navigated', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
+      this._scheduleRelatedTasksRefresh();
     });
     this.events.on('panel.focused', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
+      this._scheduleRelatedTasksRefresh();
     });
     this._refreshTimer = setInterval(() => {
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
     }, 500);
+    this._relatedRefreshInterval = setInterval(() => this._scheduleRelatedTasksRefresh(), 5000);
     this._syncActiveRecordPeriodStart();
+    this._scheduleRelatedTasksRefresh();
+    setTimeout(() => this._scheduleRelatedTasksRefresh(), 500);
+    setTimeout(() => this._scheduleRelatedTasksRefresh(), 1500);
   }
 
   onUnload() {
     this._closeCalendarPopup();
+    this._lastRelatedQueryKey = null;
     if (this._refreshTimer) clearInterval(this._refreshTimer);
+    if (this._relatedRefreshInterval) clearInterval(this._relatedRefreshInterval);
     if (this._prevButton) this._prevButton.remove();
     if (this._currentButton) this._currentButton.remove();
     if (this._nextButton) this._nextButton.remove();
@@ -131,6 +140,78 @@ class Plugin extends CollectionPlugin {
     this._calendarPopupState = null;
   }
 
+  _scheduleRelatedTasksRefresh() {
+    if (this._relatedTasksRefreshPending) return;
+    this._relatedTasksRefreshPending = true;
+    setTimeout(() => {
+      this._relatedTasksRefreshPending = false;
+      void this._syncRelatedQueryForActiveRecord();
+    }, 0);
+  }
+
+  async _syncRelatedQueryForActiveRecord() {
+    const panel = this.ui.getActivePanel();
+    const record = panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
+    if (!panel) {
+      return;
+    }
+
+    let periodStart = record ? this._recordPeriodStart(record) : null;
+    let identity = record?.guid || '';
+    if (!periodStart) {
+      const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
+      const heading = (host?.querySelector('h1')?.textContent || document.querySelector('h1')?.textContent || '').trim();
+      if (!heading) return;
+      periodStart = this._parsePeriodStartFromTitle(heading);
+      identity = heading;
+    }
+    if (!periodStart) {
+      return;
+    }
+
+    const collection = await this._getCollectionApi();
+    if (!collection || typeof collection.getConfiguration !== 'function' || typeof collection.saveConfiguration !== 'function') {
+      return;
+    }
+
+    const relatedQuery = this._relatedQueryForPeriodStart(periodStart);
+    const queryKey = `${identity}:${relatedQuery}`;
+    if (this._lastRelatedQueryKey === queryKey) {
+      return;
+    }
+
+    const currentConfig = collection.getConfiguration() || {};
+    if (currentConfig.related_query === relatedQuery) {
+      this._lastRelatedQueryKey = queryKey;
+      return;
+    }
+
+    const nextConfig = { ...currentConfig, related_query: relatedQuery };
+    const ok = await collection.saveConfiguration(nextConfig);
+    if (ok) {
+      this._lastRelatedQueryKey = queryKey;
+    }
+  }
+
+  _nextPeriodBoundary(periodStart) {
+    const base = this._normalizePeriodStart(periodStart);
+    if (this._periodMode === 'weekly') {
+      return this._dateOnly(new Date(base.getFullYear(), base.getMonth(), base.getDate() + 7));
+    }
+    if (this._periodMode === 'monthly') {
+      return this._dateOnly(new Date(base.getFullYear(), base.getMonth() + 1, 1));
+    }
+    if (this._periodMode === 'quarterly') {
+      return this._dateOnly(new Date(base.getFullYear(), base.getMonth() + 3, 1));
+    }
+    return this._dateOnly(new Date(base.getFullYear() + 1, 0, 1));
+  }
+
+  _relatedQueryForPeriodStart(periodStart) {
+    const nextBoundary = this._nextPeriodBoundary(periodStart);
+    return `@due AND @due < "${this._dateKey(nextBoundary)}"`;
+  }
+
   _handlePopupPointerDown(ev) {
     if (!this._calendarPopupElement) return;
     if (this._calendarPopupElement.contains(ev.target)) return;
@@ -160,6 +241,7 @@ class Plugin extends CollectionPlugin {
 
     const state = this._calendarPopupState;
     const monthLabel = state.displayedMonth.toLocaleDateString('en-US', { month: 'long' });
+    const quarterLabel = this._periodButtonLabelForMode('quarterly', state.selectedDate);
     const yearLabel = String(state.displayedMonth.getFullYear());
     const bodyHtml = state.view === 'years'
       ? this._renderCalendarYearPicker(state)
@@ -170,6 +252,7 @@ class Plugin extends CollectionPlugin {
         <div class="cadence-period-picker-header">
           <div class="cadence-period-picker-links">
             <button type="button" class="cadence-period-picker-link cadence-period-picker-month">${monthLabel}</button>
+            <button type="button" class="cadence-period-picker-link cadence-period-picker-quarter">${quarterLabel}</button>
             <button type="button" class="cadence-period-picker-link cadence-period-picker-year">${yearLabel}</button>
             <button type="button" class="cadence-period-picker-dot" aria-label="Open month and year picker"></button>
           </div>
@@ -184,6 +267,7 @@ class Plugin extends CollectionPlugin {
     `;
 
     this._syncPopupPeriodLink(this._calendarPopupElement.querySelector('.cadence-period-picker-month'), 'monthly', state.selectedDate, state.panel);
+    this._syncPopupPeriodLink(this._calendarPopupElement.querySelector('.cadence-period-picker-quarter'), 'quarterly', state.selectedDate, state.panel);
     this._syncPopupPeriodLink(this._calendarPopupElement.querySelector('.cadence-period-picker-year'), 'yearly', state.selectedDate, state.panel);
     this._calendarPopupElement.querySelector('.cadence-period-picker-dot')?.addEventListener('click', (ev) => {
       ev.preventDefault();
@@ -603,6 +687,7 @@ class Plugin extends CollectionPlugin {
 
     if (periodMode === 'weekly') return this._startOfIsoWeek(date);
     if (periodMode === 'monthly') return this._dateOnly(new Date(date.getFullYear(), date.getMonth(), 1));
+    if (periodMode === 'quarterly') return this._quarterStartForDate(date);
     return this._dateOnly(new Date(date.getFullYear(), 0, 1));
   }
 
@@ -614,6 +699,9 @@ class Plugin extends CollectionPlugin {
     }
     if (periodMode === 'monthly') {
       return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
+    }
+    if (periodMode === 'quarterly') {
+      return `${normalized.getFullYear()}-Q${this._quarterOfDate(normalized)}`;
     }
     return String(normalized.getFullYear());
   }
@@ -638,6 +726,14 @@ class Plugin extends CollectionPlugin {
       const monthIndex = this._monthIndexFromShortName(match[1]);
       if (monthIndex === null) return null;
       return this._dateOnly(new Date(Number(match[2]), monthIndex, 1));
+    }
+
+    if (periodMode === 'quarterly') {
+      const match = title.match(/^(?:Q([1-4])\s+(\d{4})|(\d{4})[-\s]Q([1-4]))$/i);
+      if (!match) return null;
+      const year = Number(match[2] || match[3]);
+      const quarter = Number(match[1] || match[4]);
+      return this._quarterStartForYearQuarter(year, quarter);
     }
 
     const yearMatch = title.match(/^(\d{4})$/);
@@ -954,6 +1050,18 @@ class Plugin extends CollectionPlugin {
     return this._dateOnly(date);
   }
 
+  _quarterOfDate(date) {
+    return Math.floor(date.getMonth() / 3) + 1;
+  }
+
+  _quarterStartForDate(date) {
+    return this._dateOnly(new Date(date.getFullYear(), (this._quarterOfDate(date) - 1) * 3, 1));
+  }
+
+  _quarterStartForYearQuarter(year, quarter) {
+    return this._dateOnly(new Date(year, (quarter - 1) * 3, 1));
+  }
+
   _shiftPeriod(sourceDate, direction) {
     const base = this._normalizePeriodStart(sourceDate);
 
@@ -965,6 +1073,10 @@ class Plugin extends CollectionPlugin {
 
     if (this._periodMode === 'monthly') {
       return this._dateOnly(new Date(base.getFullYear(), base.getMonth() + direction, 1));
+    }
+
+    if (this._periodMode === 'quarterly') {
+      return this._dateOnly(new Date(base.getFullYear(), base.getMonth() + (direction * 3), 1));
     }
 
     return this._dateOnly(new Date(base.getFullYear() + direction, 0, 1));
@@ -980,6 +1092,7 @@ class Plugin extends CollectionPlugin {
   _periodWord() {
     if (this._periodMode === 'weekly') return 'week';
     if (this._periodMode === 'monthly') return 'month';
+    if (this._periodMode === 'quarterly') return 'quarter';
     return 'year';
   }
 
@@ -994,6 +1107,10 @@ class Plugin extends CollectionPlugin {
 
     if (this._periodMode === 'monthly') {
       return date.toLocaleDateString('en-US', { month: 'short' });
+    }
+
+    if (this._periodMode === 'quarterly') {
+      return `Q${this._quarterOfDate(date)}`;
     }
 
     return String(date.getFullYear());
@@ -1012,6 +1129,9 @@ class Plugin extends CollectionPlugin {
     if (this._periodMode === 'monthly') {
       return `${normalized.getFullYear()}-${String(normalized.getMonth() + 1).padStart(2, '0')}`;
     }
+    if (this._periodMode === 'quarterly') {
+      return `${normalized.getFullYear()}-Q${this._quarterOfDate(normalized)}`;
+    }
     return String(normalized.getFullYear());
   }
 
@@ -1020,6 +1140,7 @@ class Plugin extends CollectionPlugin {
 
     if (this._periodMode === 'weekly') return this._startOfIsoWeek(date);
     if (this._periodMode === 'monthly') return this._dateOnly(new Date(date.getFullYear(), date.getMonth(), 1));
+    if (this._periodMode === 'quarterly') return this._quarterStartForDate(date);
     return this._dateOnly(new Date(date.getFullYear(), 0, 1));
   }
 
@@ -1064,7 +1185,7 @@ class Plugin extends CollectionPlugin {
     const cadence = custom.cadence && typeof custom.cadence === 'object' ? custom.cadence : {};
     const periods = {};
 
-    for (const periodMode of ['weekly', 'monthly', 'yearly']) {
+    for (const periodMode of ['weekly', 'monthly', 'quarterly', 'yearly']) {
       const source = cadence.periods?.[periodMode] || {};
       const collectionGuid = source.collectionGuid || custom[`${periodMode}CollectionGuid`] || '';
       const collectionName = source.collectionName || custom[`${periodMode}CollectionName`] || this._defaultCollectionName(periodMode);
@@ -1115,12 +1236,14 @@ class Plugin extends CollectionPlugin {
   _defaultCollectionName(periodMode) {
     if (periodMode === 'weekly') return 'Weekly Notes';
     if (periodMode === 'monthly') return 'Monthly Notes';
+    if (periodMode === 'quarterly') return 'Quarterly Notes';
     return 'Yearly Notes';
   }
 
   _defaultTitleFormat(periodMode) {
     if (periodMode === 'weekly') return 'GGGG-[W]WW';
     if (periodMode === 'monthly') return 'MMM YYYY';
+    if (periodMode === 'quarterly') return 'YYYY-[Q]Q';
     return 'YYYY';
   }
 
@@ -1136,7 +1259,21 @@ class Plugin extends CollectionPlugin {
   _periodLabel(periodMode) {
     if (periodMode === 'weekly') return 'Weekly';
     if (periodMode === 'monthly') return 'Monthly';
+    if (periodMode === 'quarterly') return 'Quarterly';
     return 'Yearly';
+  }
+
+  _periodButtonLabelForMode(periodMode, date) {
+    if (periodMode === 'weekly') {
+      return `W${this._isoWeekInfo(date).week}`;
+    }
+    if (periodMode === 'monthly') {
+      return date.toLocaleDateString('en-US', { month: 'short' });
+    }
+    if (periodMode === 'quarterly') {
+      return `Q${this._quarterOfDate(date)}`;
+    }
+    return String(date.getFullYear());
   }
 
   _syncPopupPeriodLink(button, periodMode, sourceDate, panel) {
@@ -1208,6 +1345,7 @@ class Plugin extends CollectionPlugin {
       gggg: String(info.year),
       YYYY: String(normalized.getFullYear()),
       YY: String(normalized.getFullYear()).slice(-2),
+      Q: String(this._quarterOfDate(normalized)),
       MMMM: monthLong,
       MMM: monthShort,
       MM: String(normalized.getMonth() + 1).padStart(2, '0'),
@@ -1236,7 +1374,7 @@ class Plugin extends CollectionPlugin {
       }
 
       let matched = false;
-      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY']) {
+      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY', 'Q']) {
         if (!source.startsWith(token, index)) continue;
         output += replacements[token] ?? token;
         index += token.length;

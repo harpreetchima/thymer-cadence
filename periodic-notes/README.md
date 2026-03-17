@@ -1,9 +1,10 @@
 # Thymer Cadence Periodic Notes
 
-Reusable Thymer collection runtime for the optional weekly, monthly, and yearly collections managed by `Cadence Control`.
+Reusable Thymer collection runtime for the optional weekly, monthly, quarterly, and yearly collections managed by `Cadence Control`.
 
 - `Weekly Notes`
 - `Monthly Notes`
+- `Quarterly Notes`
 - `Yearly Notes`
 
 Each collection will use the same `plugin.js` with a different `plugin.json` variant.
@@ -27,4 +28,5 @@ Current scaffold:
 - `plugin.css` - popup/calendar styling for the periodic runtime
 - `plugin.weekly.json` - weekly collection config
 - `plugin.monthly.json` - monthly collection config
+- `plugin.quarterly.json` - quarterly collection config
 - `plugin.yearly.json` - yearly collection config

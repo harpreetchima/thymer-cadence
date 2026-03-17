@@ -5,7 +5,7 @@ Global Thymer plugin that installs and manages the Cadence runtime across a user
 ## Responsibilities
 
 - ask the user which journal collection is their Daily Notes collection
-- let the user enable or disable weekly, monthly, and yearly note collections independently
+- let the user enable or disable weekly, monthly, quarterly, and yearly note collections independently
 - let the user adopt an existing collection or create a new one for each enabled period type
 - provision or repair required metadata fields and runtime plugin code
 - keep the Daily Notes and periodic runtime plugins in sync from one shared workspace config
