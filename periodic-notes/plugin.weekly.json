@@ -16,7 +16,7 @@
       "label": "Title",
       "many": false,
       "read_only": false,
-      "active": false,
+      "active": true,
       "type": "text"
     },
     {
@@ -24,8 +24,8 @@
       "id": "period_start",
       "label": "Period Start",
       "many": false,
-      "read_only": true,
-      "active": true,
+      "read_only": false,
+      "active": false,
       "type": "datetime"
     },
     {
@@ -33,7 +33,7 @@
       "id": "period_key",
       "label": "Period Key",
       "many": false,
-      "read_only": false,
+      "read_only": true,
       "active": false,
       "type": "text"
     },
@@ -63,6 +63,15 @@
       "read_only": false,
       "active": true,
       "type": "banner"
+    },
+    {
+      "icon": "ti-align-left",
+      "id": "icon",
+      "label": "Icon",
+      "many": false,
+      "read_only": false,
+      "active": true,
+      "type": "text"
     }
   ],
   "sidebar_record_sort_dir": "desc",

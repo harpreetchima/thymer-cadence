@@ -7,7 +7,7 @@ const PERIODIC_PLUGIN_TEMPLATES = __PERIODIC_PLUGIN_TEMPLATES__;
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.4';
+    this._version = '0.1.5';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -760,6 +760,15 @@ class Plugin extends AppPlugin {
   _ensureCadenceFields(conf, settings) {
     conf.fields = Array.isArray(conf.fields) ? conf.fields : [];
     this._ensureField(conf.fields, {
+      id: 'title',
+      label: 'Title',
+      type: 'text',
+      icon: 'ti-abc',
+      active: true,
+      many: false,
+      read_only: false,
+    });
+    this._ensureField(conf.fields, {
       id: 'period_start',
       label: 'Period Start',
       type: 'datetime',
@@ -775,6 +784,42 @@ class Plugin extends AppPlugin {
       icon: 'ti-hash',
       active: false,
       many: false,
+      read_only: true,
+    });
+    this._ensureField(conf.fields, {
+      id: 'updated_at',
+      label: 'Modified',
+      type: 'datetime',
+      icon: 'ti-clock-edit',
+      active: true,
+      many: false,
+      read_only: true,
+    });
+    this._ensureField(conf.fields, {
+      id: 'created_at',
+      label: 'Created',
+      type: 'datetime',
+      icon: 'ti-clock-plus',
+      active: true,
+      many: false,
+      read_only: true,
+    });
+    this._ensureField(conf.fields, {
+      id: 'banner',
+      label: 'Banner',
+      type: 'banner',
+      icon: 'ti-photo',
+      active: true,
+      many: false,
+      read_only: false,
+    });
+    this._ensureField(conf.fields, {
+      id: 'icon',
+      label: 'Icon',
+      type: 'text',
+      icon: 'ti-align-left',
+      active: true,
+      many: false,
       read_only: false,
     });
 
@@ -783,12 +828,12 @@ class Plugin extends AppPlugin {
   _ensureField(fields, spec) {
     const existing = fields.find((field) => field && field.id === spec.id);
     if (existing) {
-      existing.label = existing.label || spec.label;
-      existing.type = existing.type || spec.type;
-      existing.icon = existing.icon || spec.icon;
-      if (typeof existing.active !== 'boolean') existing.active = !!spec.active;
-      if (typeof existing.many !== 'boolean') existing.many = !!spec.many;
-      if (typeof existing.read_only !== 'boolean') existing.read_only = !!spec.read_only;
+      existing.label = spec.label;
+      existing.type = spec.type;
+      existing.icon = spec.icon;
+      existing.active = !!spec.active;
+      existing.many = !!spec.many;
+      existing.read_only = !!spec.read_only;
       return existing;
     }
     fields.push({ ...spec });
