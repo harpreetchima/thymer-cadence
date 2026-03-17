@@ -1,9 +1,10 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.9';
+    this._version = '0.4.10';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
+    this._periodContextByGuid = new Map();
     if (!this._periodSettings.enabled) return;
 
     this._prevButton = this.addCollectionNavigationButton({
@@ -165,8 +166,10 @@ class Plugin extends CollectionPlugin {
 
   getRelatedItemsSearchQuery(recordGuid) {
     const record = this._resolveRelatedRecord(recordGuid);
-    const pageGuid = record?.guid || (typeof record?.getGuid === 'function' ? record.getGuid() : null);
-    const periodStart = this._recordPeriodStart(record);
+    const pageGuid = typeof recordGuid === 'string'
+      ? recordGuid
+      : (record?.guid || (typeof record?.getGuid === 'function' ? record.getGuid() : null));
+    const periodStart = this._recordPeriodStart(record) || this._getRememberedPeriodContext(pageGuid);
     if (!periodStart || !pageGuid) return null;
 
     const nextBoundary = this._nextPeriodBoundary(periodStart);
@@ -195,6 +198,20 @@ class Plugin extends CollectionPlugin {
 
     const panel = this._getRelevantPeriodPanel();
     return panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
+  }
+
+  _rememberPeriodContext(recordOrGuid, periodStart) {
+    const guid = typeof recordOrGuid === 'string'
+      ? recordOrGuid
+      : (recordOrGuid?.guid || (typeof recordOrGuid?.getGuid === 'function' ? recordOrGuid.getGuid() : null));
+    if (!guid || !periodStart) return;
+    this._periodContextByGuid.set(guid, this._dateOnly(periodStart));
+  }
+
+  _getRememberedPeriodContext(guid) {
+    if (!guid) return null;
+    const date = this._periodContextByGuid.get(guid);
+    return date ? this._dateOnly(date) : null;
   }
 
   _nextPeriodBoundary(periodStart) {
@@ -802,11 +819,14 @@ class Plugin extends CollectionPlugin {
   }
 
   async _openPeriodRecord({ ev, panel, sourceDate }) {
+    const targetPeriodStart = this._normalizePeriodStart(sourceDate);
     const record = await this._findOrCreatePeriodRecord(sourceDate);
     if (!record) {
       this._toast('Thymer Cadence', `Unable to open ${this._periodWord()} note.`);
       return;
     }
+
+    this._rememberPeriodContext(record, targetPeriodStart);
 
     const targetPanel = await this._getTargetPanel(panel, ev);
     if (targetPanel && this._navigateToRecord(targetPanel, record.guid)) {
@@ -822,10 +842,14 @@ class Plugin extends CollectionPlugin {
 
     const periodStart = this._normalizePeriodStart(sourceDate);
     const existing = await this._findRecordByPeriodStart(collection, periodStart);
-    if (existing) return existing;
+    if (existing) {
+      this._rememberPeriodContext(existing, periodStart);
+      return existing;
+    }
 
     const guid = collection.createRecord(this._periodTitle(periodStart));
     if (!guid) return null;
+    this._rememberPeriodContext(guid, periodStart);
 
     const record = this.data.getRecord(guid);
     if (record) {
@@ -845,6 +869,7 @@ class Plugin extends CollectionPlugin {
   }
 
   _setPeriodMetadata(record, periodStart) {
+    this._rememberPeriodContext(record, periodStart);
     const settings = this._getPeriodSettings(this._periodMode);
     const periodProperty = this._resolveProperty(record, [
       settings.periodStartFieldId,
@@ -902,6 +927,12 @@ class Plugin extends CollectionPlugin {
       return;
     }
 
+    const existingPeriodStart = this._recordPeriodStart(activeRecord);
+    if (existingPeriodStart) {
+      this._rememberPeriodContext(activeRecord, existingPeriodStart);
+      return;
+    }
+
     const periodProp = activeRecord.prop('period_start') || activeRecord.prop('Period Start');
     if (!periodProp) return;
 
@@ -912,10 +943,14 @@ class Plugin extends CollectionPlugin {
     if (!currentValue && typeof periodProp.date === 'function') {
       currentValue = periodProp.date();
     }
-    if (currentValue) return;
+    if (currentValue) {
+      this._rememberPeriodContext(activeRecord, currentValue);
+      return;
+    }
 
     const parsed = this._parsePeriodStartFromTitle(activeRecord.getName());
     if (!parsed) return;
+    this._rememberPeriodContext(activeRecord, parsed);
     this._setPeriodMetadata(activeRecord, parsed);
   }
 
@@ -1033,6 +1068,14 @@ class Plugin extends CollectionPlugin {
       const monthIndex = this._monthIndexFromShortName(match[1]);
       if (monthIndex === null) return null;
       return this._dateOnly(new Date(Number(match[2]), monthIndex, 1));
+    }
+
+    if (this._periodMode === 'quarterly') {
+      const match = title.match(/^(?:Q([1-4])\s+(\d{4})|(\d{4})[-\s]Q([1-4]))$/i);
+      if (!match) return null;
+      const year = Number(match[2] || match[3]);
+      const quarter = Number(match[1] || match[4]);
+      return this._quarterStartForYearQuarter(year, quarter);
     }
 
     const yearMatch = title.match(/^(\d{4})$/);
