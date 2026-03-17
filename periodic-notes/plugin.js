@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.4';
+    this._version = '0.4.6';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -173,28 +173,29 @@ class Plugin extends CollectionPlugin {
     const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
     const record = panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
     if (!panel || !host || !record) {
-      this._removeRelatedTasksBlock();
+      this._removeRelatedTasksBlock(host);
       return;
     }
 
     const periodStart = this._recordPeriodStart(record);
     if (!periodStart) {
-      this._removeRelatedTasksBlock();
+      this._removeRelatedTasksBlock(host);
       return;
     }
 
     const anchor = this._findRelatedTasksAnchor(host);
     if (!anchor) {
+      this._removeRelatedTasksBlock(host);
       return;
     }
 
     const tasks = await this._searchRelatedTasks(periodStart);
     if (!tasks.length) {
-      this._removeRelatedTasksBlock();
+      this._removeRelatedTasksBlock(host);
       return;
     }
 
-    const block = this._ensureRelatedTasksBlock(anchor);
+    const block = this._ensureRelatedTasksBlock(anchor, host);
     block.innerHTML = '';
 
     const title = document.createElement('div');
@@ -212,7 +213,51 @@ class Plugin extends CollectionPlugin {
   }
 
   _findRelatedTasksAnchor(host) {
-    return host.querySelector('h1') || document.querySelector('h1');
+    const preferredSelectors = [
+      '.id--h1-area .title.id--h1',
+      'h1.title.id--h1',
+      '.title.id--h1',
+    ];
+    for (const selector of preferredSelectors) {
+      const anchor = (host && host.querySelector(selector)) || document.querySelector(selector);
+      if (anchor) return anchor;
+    }
+
+    const selectors = [
+      '.version-title h1',
+      'h1',
+    ];
+    for (const selector of selectors) {
+      const anchor = this._pickVisibleElement(host ? host.querySelectorAll(selector) : []);
+      if (anchor) return anchor;
+    }
+
+    for (const selector of selectors) {
+      const anchor = this._pickVisibleElement(document.querySelectorAll(selector));
+      if (anchor) return anchor;
+    }
+
+    return null;
+  }
+
+  _pickVisibleElement(elements) {
+    const candidates = Array.from(elements || []).filter((element) => this._isVisibleElement(element));
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => this._visibleElementScore(b) - this._visibleElementScore(a));
+    return candidates[0];
+  }
+
+  _isVisibleElement(element) {
+    if (!element || !element.isConnected || typeof window === 'undefined') return false;
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+    const rect = element.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  }
+
+  _visibleElementScore(element) {
+    const rect = element.getBoundingClientRect();
+    return (rect.width * rect.height) - Math.max(rect.top, 0);
   }
 
   _getRelevantPeriodPanel() {
@@ -243,10 +288,14 @@ class Plugin extends CollectionPlugin {
     return !!(navCollection && typeof navCollection.getGuid === 'function' && navCollection.getGuid() === this.guid);
   }
 
-  _ensureRelatedTasksBlock(anchor) {
+  _ensureRelatedTasksBlock(anchor, host) {
+    const container = anchor && anchor.parentElement ? anchor.parentElement : host;
+    this._lastRelatedTasksContainer = container || this._lastRelatedTasksContainer || null;
+    this._cleanupRelatedTasksBlocks(container, this._relatedTasksBlockElement);
     if (!this._relatedTasksBlockElement || !this._relatedTasksBlockElement.isConnected) {
       this._relatedTasksBlockElement = document.createElement('section');
       this._relatedTasksBlockElement.className = 'cadence-related-block';
+      this._relatedTasksBlockElement.dataset.cadenceRelatedBlock = 'true';
     }
     if (anchor.nextElementSibling !== this._relatedTasksBlockElement) {
       anchor.insertAdjacentElement('afterend', this._relatedTasksBlockElement);
@@ -254,11 +303,21 @@ class Plugin extends CollectionPlugin {
     return this._relatedTasksBlockElement;
   }
 
-  _removeRelatedTasksBlock() {
+  _removeRelatedTasksBlock(host) {
+    const container = host || this._lastRelatedTasksContainer || (this._relatedTasksBlockElement && this._relatedTasksBlockElement.parentElement) || null;
+    this._cleanupRelatedTasksBlocks(container, this._relatedTasksBlockElement);
     if (this._relatedTasksBlockElement && this._relatedTasksBlockElement.isConnected) {
       this._relatedTasksBlockElement.remove();
     }
     this._relatedTasksBlockElement = null;
+  }
+
+  _cleanupRelatedTasksBlocks(host, keep) {
+    if (!host || typeof host.querySelectorAll !== 'function') return;
+    for (const block of host.querySelectorAll('.cadence-related-block')) {
+      if (keep && block === keep) continue;
+      block.remove();
+    }
   }
 
   async _searchRelatedTasks(periodStart) {
