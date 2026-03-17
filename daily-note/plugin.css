@@ -1,0 +1,182 @@
+.panel-menubar-buttons button[data-tooltip-html^="Open weekly note"],
+.panel-menubar-buttons button[data-tooltip-html^="Open monthly note"],
+.panel-menubar-buttons button[data-tooltip-html^="Open yearly note"] {
+  padding-left: 5px;
+  padding-right: 5px;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+.cmdpal--inline.cadence-datepicker-popup {
+  width: auto !important;
+  max-width: calc(100vw - 40px) !important;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-wrapper.cadence-datepicker-enhanced {
+  width: auto;
+  max-width: none;
+  padding: 10px 12px 10px;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-wrapper.cadence-datepicker-enhanced .datepicker-header {
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 0;
+}
+
+.cmdpal--inline .id--datepicker .current-month.cadence-native-month-trigger {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  margin-left: -2px;
+  overflow: hidden;
+  white-space: nowrap;
+  color: transparent;
+  font-size: 0;
+  border-radius: 999px;
+}
+
+.cmdpal--inline .id--datepicker .current-month.cadence-native-month-trigger::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--text-muted);
+}
+
+.cmdpal--inline .id--datepicker .current-month.cadence-native-month-trigger:hover {
+  background: var(--button-bg-hover-color);
+}
+
+.cmdpal--inline .id--datepicker .cadence-datepicker-links {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cmdpal--inline .id--datepicker .cadence-datepicker-link,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeknum {
+  border: none;
+  background: transparent;
+  color: var(--panel-fg-color);
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.cmdpal--inline .id--datepicker .cadence-datepicker-link {
+  font-weight: var(--font-weight-medium);
+  line-height: 1.15;
+}
+
+.cmdpal--inline .id--datepicker .cadence-datepicker-link:hover,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeknum:hover {
+  color: var(--text-hilite);
+}
+
+.cmdpal--inline .id--datepicker .cadence-native-nav {
+  display: flex !important;
+  gap: 4px !important;
+  align-items: center;
+}
+
+.cmdpal--inline .id--datepicker .cadence-native-nav .go-to-today {
+  width: auto;
+  min-width: 0;
+  padding: 0 6px;
+  color: transparent;
+  font-size: 0;
+}
+
+.cmdpal--inline .id--datepicker .cadence-native-nav .go-to-today::after {
+  content: 'Today';
+  font-size: var(--text-size-smaller);
+  color: var(--text-muted);
+  line-height: 1.15;
+}
+
+.cmdpal--inline.cadence-datepicker-popup .autocomplete.clickable {
+  overflow: visible;
+}
+
+.cmdpal--inline.cadence-datepicker-popup .vscroll-node,
+.cmdpal--inline.cadence-datepicker-popup .vcontent {
+  overflow: visible !important;
+  max-height: none !important;
+}
+
+.cmdpal--inline.cadence-datepicker-popup .vscrollbar.scrollbar {
+  display: none !important;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-weekdays,
+.cmdpal--inline .id--datepicker .datepicker-days {
+  display: grid;
+  grid-template-columns: 20px repeat(7, 28px);
+  column-gap: 4px;
+  width: max-content;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-weekdays {
+  margin-bottom: 2px;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-days {
+  height: auto;
+  row-gap: 2px;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-weekdays .weekday,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeklabel,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeknum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 0;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-weekdays .weekday,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeklabel {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeknum {
+  font-size: var(--text-size-smaller);
+  color: var(--text-muted);
+  border-radius: var(--radius-normal);
+  height: 28px;
+  min-height: 28px;
+  line-height: 28px;
+  justify-self: stretch;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-days .day {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cmdpal--inline .id--datepicker .datepicker-days .day .day-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+}

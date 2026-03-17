@@ -1,12 +1,12 @@
 class Plugin extends JournalCorePlugin {
   onLoad() {
-    this._version = '0.1.0';
+    this._version = '0.1.5';
     if (typeof super.onLoad === 'function') super.onLoad();
 
     this._weeklyButton = this.addCollectionNavigationButton({
       label: 'W',
       tooltip: 'Open weekly note',
-      onlyWhenExpanded: false,
+      onlyWhenExpanded: true,
       onClick: ({ ev, panel, record }) => this._openPeriodNote({
         ev,
         panel,
@@ -17,7 +17,7 @@ class Plugin extends JournalCorePlugin {
     this._monthlyButton = this.addCollectionNavigationButton({
       label: 'Mon',
       tooltip: 'Open monthly note',
-      onlyWhenExpanded: false,
+      onlyWhenExpanded: true,
       onClick: ({ ev, panel, record }) => this._openPeriodNote({
         ev,
         panel,
@@ -28,7 +28,7 @@ class Plugin extends JournalCorePlugin {
     this._yearlyButton = this.addCollectionNavigationButton({
       label: 'YYYY',
       tooltip: 'Open yearly note',
-      onlyWhenExpanded: false,
+      onlyWhenExpanded: true,
       onClick: ({ ev, panel, record }) => this._openPeriodNote({
         ev,
         panel,
@@ -40,12 +40,230 @@ class Plugin extends JournalCorePlugin {
     this.events.on('panel.navigated', () => this._refreshButtons());
     this.events.on('panel.focused', () => this._refreshButtons());
     this._refreshButtons();
+    this._installDatepickerEnhancements();
   }
 
   onUnload() {
+    if (this._datepickerObserver) this._datepickerObserver.disconnect();
+    if (this._datepickerPatchTimer) clearTimeout(this._datepickerPatchTimer);
     if (this._weeklyButton) this._weeklyButton.remove();
     if (this._monthlyButton) this._monthlyButton.remove();
     if (this._yearlyButton) this._yearlyButton.remove();
+  }
+
+  _installDatepickerEnhancements() {
+    if (typeof document === 'undefined' || !document.body || typeof MutationObserver !== 'function') return;
+    this._datepickerObserver = new MutationObserver(() => this._queueDatepickerPatch());
+    this._datepickerObserver.observe(document.body, { childList: true, subtree: true });
+    this._queueDatepickerPatch();
+  }
+
+  _queueDatepickerPatch() {
+    if (this._datepickerPatchTimer) return;
+    this._datepickerPatchTimer = setTimeout(() => {
+      this._datepickerPatchTimer = null;
+      this._patchOpenDatepickers();
+    }, 0);
+  }
+
+  _patchOpenDatepickers() {
+    if (typeof document === 'undefined') return;
+    const wrappers = document.querySelectorAll('.cmdpal--inline .autocomplete-date-widget .id--datepicker .datepicker-wrapper.datepicker-compact');
+    wrappers.forEach((wrapper) => this._patchDatepicker(wrapper));
+  }
+
+  _patchDatepicker(wrapper) {
+    const popup = wrapper.closest('.cmdpal--inline');
+    const inlineInput = popup?.querySelector('.cmdpal--inline-input[placeholder*="monday"]');
+    const header = wrapper.querySelector('.datepicker-header');
+    const currentMonthTrigger = header?.querySelector('.current-month');
+    const navControls = currentMonthTrigger?.nextElementSibling;
+    const weekdays = wrapper.querySelector('.datepicker-weekdays');
+    const dayGrid = wrapper.querySelector('.datepicker-days');
+    if (!popup || !inlineInput || !header || !currentMonthTrigger || !navControls || !weekdays || !dayGrid) return;
+
+    const dayCells = [...dayGrid.querySelectorAll(':scope > .day')];
+    if (!dayCells.length || dayCells.length % 7 !== 0) return;
+
+    const firstCurrentDay = dayCells.find((cell) => cell.classList.contains('current-month'));
+    const displayedDate = this._dateFromPickerValue(firstCurrentDay?.dataset?.date || dayCells[0]?.dataset?.date || '');
+    if (!displayedDate) return;
+
+    popup.classList.add('cadence-datepicker-popup');
+    wrapper.classList.add('cadence-datepicker-enhanced');
+    currentMonthTrigger.classList.add('cadence-native-month-trigger');
+    navControls.classList.add('cadence-native-nav');
+
+    const todayButton = navControls.querySelector('.go-to-today');
+    if (todayButton) {
+      todayButton.classList.add('cadence-today-button');
+      this._bridgeNativeDatepickerClick(todayButton);
+    }
+    this._bridgeNativeDatepickerClick(currentMonthTrigger);
+
+    this._patchDatepickerHeaderLinks({ header, currentMonthTrigger, displayedDate });
+    this._patchDatepickerGrid({ weekdays, dayGrid, dayCells });
+    dayCells.forEach((cell) => this._bridgeNativeDatepickerClick(cell));
+    this._patchDatepickerShell({ popup, wrapper });
+  }
+
+  _patchDatepickerHeaderLinks({ header, currentMonthTrigger, displayedDate }) {
+    let links = header.querySelector('.cadence-datepicker-links');
+    if (!links) {
+      links = document.createElement('div');
+      links.className = 'cadence-datepicker-links';
+      links.innerHTML = [
+        '<button class="cadence-datepicker-link cadence-datepicker-month" type="button"></button>',
+        '<button class="cadence-datepicker-link cadence-datepicker-year" type="button"></button>',
+      ].join('');
+      header.insertBefore(links, currentMonthTrigger);
+    }
+
+    const monthButton = links.querySelector('.cadence-datepicker-month');
+    const yearButton = links.querySelector('.cadence-datepicker-year');
+    links.querySelector('.cadence-datepicker-dot')?.remove();
+    if (!monthButton || !yearButton) return;
+
+    monthButton.textContent = displayedDate.toLocaleDateString('en-US', { month: 'long' });
+    yearButton.textContent = String(displayedDate.getFullYear());
+    currentMonthTrigger.title = 'Open month and year picker';
+
+    this._bindDatepickerAction(monthButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'monthly', displayedDate));
+    this._bindDatepickerAction(yearButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'yearly', displayedDate));
+  }
+
+  _patchDatepickerGrid({ weekdays, dayGrid, dayCells }) {
+    weekdays.querySelector('.cadence-datepicker-weeklabel')?.remove();
+    dayGrid.querySelectorAll('.cadence-datepicker-weeknum').forEach((node) => node.remove());
+
+    const weekLabel = document.createElement('div');
+    weekLabel.className = 'cadence-datepicker-weeklabel';
+    weekLabel.textContent = 'W';
+    weekdays.insertBefore(weekLabel, weekdays.firstChild);
+
+    const weekdayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+    [...weekdays.querySelectorAll('.weekday')].forEach((label, index) => {
+      label.textContent = weekdayLabels[index] || label.textContent;
+    });
+
+    dayCells.forEach((cell) => dayGrid.appendChild(cell));
+    for (let index = 0; index < dayCells.length; index += 7) {
+      const mondayCell = dayCells[index];
+      const mondayDate = this._dateFromPickerValue(mondayCell?.dataset?.date || '');
+      if (!mondayDate) continue;
+      const weekInfo = this._isoWeekInfo(mondayDate);
+
+      const weekButton = document.createElement('button');
+      weekButton.type = 'button';
+      weekButton.className = 'cadence-datepicker-weeknum';
+      weekButton.textContent = String(weekInfo.week);
+      weekButton.title = `Open weekly note for W${weekInfo.week} ${weekInfo.year}`;
+      this._bindDatepickerAction(weekButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'weekly', mondayDate));
+      dayGrid.insertBefore(weekButton, mondayCell);
+    }
+  }
+
+  _patchDatepickerShell({ popup, wrapper }) {
+    const inputContainer = popup.querySelector('.cmdpal--inline-input-container');
+    const inputRow = inputContainer?.firstElementChild;
+    const input = popup.querySelector('.cmdpal--inline-input');
+    const autocomplete = popup.querySelector('.autocomplete.clickable');
+    const scrollNode = popup.querySelector('.vscroll-node');
+    const vcontent = popup.querySelector('.vcontent');
+    const scrollbar = popup.querySelector('.vscrollbar.scrollbar');
+    if (!inputContainer || !inputRow || !input || !autocomplete || !scrollNode || !vcontent) return;
+
+    const desiredWidth = Math.max(Math.ceil(wrapper.scrollWidth), 256);
+    popup.style.width = `${desiredWidth + 2}px`;
+    inputContainer.style.width = `${desiredWidth}px`;
+    inputRow.style.width = `${desiredWidth}px`;
+    input.style.width = `${Math.max(desiredWidth - 16, 120)}px`;
+    autocomplete.style.width = `${desiredWidth}px`;
+    autocomplete.style.overflow = 'visible';
+    autocomplete.style.maxHeight = 'none';
+    scrollNode.style.width = `${desiredWidth}px`;
+    scrollNode.style.overflow = 'visible';
+    scrollNode.style.height = 'auto';
+    scrollNode.style.maxHeight = 'none';
+    vcontent.style.width = `${desiredWidth}px`;
+    vcontent.style.overflow = 'visible';
+    if (scrollbar) scrollbar.style.display = 'none';
+  }
+
+  _bridgeNativeDatepickerClick(element) {
+    if (!element || element.dataset.cadenceNativeBridge === '1') return;
+
+    const onPointerDown = (ev) => {
+      if (typeof ev.button === 'number' && ev.button !== 0) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      element.__cadenceSuppressNativeClick = true;
+      element.__cadenceBridgeInvoking = true;
+      element.click();
+      element.__cadenceBridgeInvoking = false;
+    };
+
+    const onClick = (ev) => {
+      if (element.__cadenceBridgeInvoking) return;
+      if (!element.__cadenceSuppressNativeClick) return;
+      element.__cadenceSuppressNativeClick = false;
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+
+    element.addEventListener('pointerdown', onPointerDown, true);
+    element.addEventListener('click', onClick, true);
+    element.dataset.cadenceNativeBridge = '1';
+  }
+
+  _bindDatepickerAction(element, onActivate) {
+    let activatedFromPointer = false;
+    const consume = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    element.onpointerdown = (ev) => {
+      activatedFromPointer = true;
+      consume(ev);
+      onActivate(ev);
+    };
+    element.onpointerup = consume;
+    element.onmousedown = consume;
+    element.onclick = (ev) => {
+      consume(ev);
+      if (activatedFromPointer) {
+        activatedFromPointer = false;
+        return;
+      }
+      onActivate(ev);
+    };
+    element.onkeydown = (ev) => {
+      if (ev.key !== 'Enter' && ev.key !== ' ') return;
+      activatedFromPointer = false;
+      consume(ev);
+      onActivate(ev);
+    };
+    element.onblur = () => {
+      activatedFromPointer = false;
+    };
+  }
+
+  _handleDatepickerPeriodOpen(ev, periodMode, sourceDate) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    void this._openPeriodNote({
+      ev,
+      panel: this.ui.getActivePanel(),
+      periodMode,
+      sourceDate,
+    });
+  }
+
+  _dateFromPickerValue(value) {
+    if (!value || typeof value !== 'string') return null;
+    const [year, month, day] = value.split('-').map(Number);
+    if (!year || !month || !day) return null;
+    return this._dateOnly(new Date(year, month - 1, day));
   }
 
   _refreshButtons() {
