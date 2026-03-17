@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.7';
+    this._version = '0.4.8';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -47,35 +47,24 @@ class Plugin extends CollectionPlugin {
     this._boundHandlePopupPointerDown = (ev) => this._handlePopupPointerDown(ev);
     this._boundHandlePopupKeyDown = (ev) => this._handlePopupKeyDown(ev);
     this._boundRepositionCalendarPopup = () => this._positionCalendarPopup();
-    this._boundObservePanelDom = () => this._observeActivePanelDom();
+    this._removeLegacyRelatedTasksBlocks();
 
     this.events.on('panel.navigated', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
-      this._observeActivePanelDom();
-      this._scheduleRelatedTasksRefresh();
-      this._scheduleRelatedTasksRefresh(250);
     });
     this.events.on('panel.focused', () => {
       this._closeCalendarPopup();
       this._refreshCurrentButton();
       this._syncActiveRecordPeriodStart();
-      this._observeActivePanelDom();
-      this._scheduleRelatedTasksRefresh();
-      this._scheduleRelatedTasksRefresh(250);
     });
     this._syncActiveRecordPeriodStart();
-    this._observeActivePanelDom();
-    this._scheduleRelatedTasksRefresh();
-    this._scheduleRelatedTasksRefresh(800);
   }
 
   onUnload() {
     this._closeCalendarPopup();
-    this._removeRelatedTasksBlock();
-    if (this._relatedTasksRefreshTimer) clearTimeout(this._relatedTasksRefreshTimer);
-    if (this._panelDomObserver) this._panelDomObserver.disconnect();
+    this._removeLegacyRelatedTasksBlocks();
     if (this._prevButton) this._prevButton.remove();
     if (this._currentButton) this._currentButton.remove();
     if (this._nextButton) this._nextButton.remove();
@@ -139,131 +128,6 @@ class Plugin extends CollectionPlugin {
     this._calendarPopupState = null;
   }
 
-  _scheduleRelatedTasksRefresh() {
-    const delay = typeof arguments[0] === 'number' ? arguments[0] : 0;
-    if (this._relatedTasksRefreshTimer) clearTimeout(this._relatedTasksRefreshTimer);
-    this._relatedTasksRefreshTimer = setTimeout(() => {
-      this._relatedTasksRefreshTimer = null;
-      void this._renderRelatedTasksBlock();
-    }, delay);
-  }
-
-  _observeActivePanelDom() {
-    if (typeof MutationObserver !== 'function') return;
-    const panel = this._getRelevantPeriodPanel();
-    const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
-    if (!panel || !host) return;
-
-    const panelId = typeof panel.getId === 'function' ? panel.getId() : null;
-    if (this._panelDomObserver && this._observedPanelId === panelId) return;
-
-    if (this._panelDomObserver) {
-      this._panelDomObserver.disconnect();
-    }
-
-    this._observedPanelId = panelId;
-    this._panelDomObserver = new MutationObserver(() => {
-      this._scheduleRelatedTasksRefresh(120);
-    });
-    this._panelDomObserver.observe(host, { childList: true, subtree: true });
-  }
-
-  async _renderRelatedTasksBlock() {
-    const panel = this._getRelevantPeriodPanel();
-    const host = panel && typeof panel.getElement === 'function' ? panel.getElement() : null;
-    const record = panel && typeof panel.getActiveRecord === 'function' ? panel.getActiveRecord() : null;
-    if (!panel || !host || !record) {
-      this._removeRelatedTasksBlock(host);
-      return;
-    }
-
-    const periodStart = this._recordPeriodStart(record);
-    if (!periodStart) {
-      this._removeRelatedTasksBlock(host);
-      return;
-    }
-
-    const anchor = this._findRelatedTasksAnchor(host);
-    if (!anchor) {
-      this._removeRelatedTasksBlock(host);
-      return;
-    }
-
-    const tasks = await this._searchRelatedTasks(periodStart);
-    if (!tasks.length) {
-      this._removeRelatedTasksBlock(host);
-      return;
-    }
-
-    const block = this._ensureRelatedTasksBlock(anchor, host);
-    block.innerHTML = '';
-
-    const title = document.createElement('div');
-    title.className = 'cadence-related-title';
-    title.textContent = 'Upcoming';
-    block.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'cadence-related-list';
-    block.appendChild(list);
-
-    for (const task of tasks) {
-      list.appendChild(this._createRelatedTaskRow(task, panel));
-    }
-  }
-
-  _findRelatedTasksAnchor(host) {
-    const inlineContentAnchor = (host && host.querySelector('.content-container > listview-editor, .content-container > .listview-focus'))
-      || document.querySelector('.content-container > listview-editor, .content-container > .listview-focus');
-    if (inlineContentAnchor) return inlineContentAnchor;
-
-    const preferredSelectors = [
-      '.id--h1-area .title.id--h1',
-      'h1.title.id--h1',
-      '.title.id--h1',
-    ];
-    for (const selector of preferredSelectors) {
-      const anchor = (host && host.querySelector(selector)) || document.querySelector(selector);
-      if (anchor) return anchor;
-    }
-
-    const selectors = [
-      '.version-title h1',
-      'h1',
-    ];
-    for (const selector of selectors) {
-      const anchor = this._pickVisibleElement(host ? host.querySelectorAll(selector) : []);
-      if (anchor) return anchor;
-    }
-
-    for (const selector of selectors) {
-      const anchor = this._pickVisibleElement(document.querySelectorAll(selector));
-      if (anchor) return anchor;
-    }
-
-    return null;
-  }
-
-  _pickVisibleElement(elements) {
-    const candidates = Array.from(elements || []).filter((element) => this._isVisibleElement(element));
-    if (!candidates.length) return null;
-    candidates.sort((a, b) => this._visibleElementScore(b) - this._visibleElementScore(a));
-    return candidates[0];
-  }
-
-  _isVisibleElement(element) {
-    if (!element || !element.isConnected || typeof window === 'undefined') return false;
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
-    const rect = element.getBoundingClientRect();
-    return rect.width > 0 && rect.height > 0;
-  }
-
-  _visibleElementScore(element) {
-    const rect = element.getBoundingClientRect();
-    return (rect.width * rect.height) - Math.max(rect.top, 0);
-  }
-
   _getRelevantPeriodPanel() {
     const active = this.ui.getActivePanel();
     if (this._panelMatchesThisCollection(active)) return active;
@@ -292,42 +156,9 @@ class Plugin extends CollectionPlugin {
     return !!(navCollection && typeof navCollection.getGuid === 'function' && navCollection.getGuid() === this.guid);
   }
 
-  _ensureRelatedTasksBlock(anchor, host) {
-    const container = anchor && anchor.parentElement ? anchor.parentElement : host;
-    this._lastRelatedTasksContainer = container || this._lastRelatedTasksContainer || null;
-    this._cleanupRelatedTasksBlocks(container, this._relatedTasksBlockElement);
-    if (!this._relatedTasksBlockElement || !this._relatedTasksBlockElement.isConnected) {
-      this._relatedTasksBlockElement = document.createElement('section');
-      this._relatedTasksBlockElement.className = 'cadence-related-block';
-      this._relatedTasksBlockElement.dataset.cadenceRelatedBlock = 'true';
-    }
-    const prefersBefore = !!(anchor && typeof anchor.matches === 'function' && anchor.matches('listview-editor, .listview-focus'));
-    if (prefersBefore) {
-      if (anchor.previousElementSibling !== this._relatedTasksBlockElement) {
-        anchor.insertAdjacentElement('beforebegin', this._relatedTasksBlockElement);
-      }
-      return this._relatedTasksBlockElement;
-    }
-
-    if (anchor.nextElementSibling !== this._relatedTasksBlockElement) {
-      anchor.insertAdjacentElement('afterend', this._relatedTasksBlockElement);
-    }
-    return this._relatedTasksBlockElement;
-  }
-
-  _removeRelatedTasksBlock(host) {
-    const container = host || this._lastRelatedTasksContainer || (this._relatedTasksBlockElement && this._relatedTasksBlockElement.parentElement) || null;
-    this._cleanupRelatedTasksBlocks(container, this._relatedTasksBlockElement);
-    if (this._relatedTasksBlockElement && this._relatedTasksBlockElement.isConnected) {
-      this._relatedTasksBlockElement.remove();
-    }
-    this._relatedTasksBlockElement = null;
-  }
-
-  _cleanupRelatedTasksBlocks(host, keep) {
-    if (!host || typeof host.querySelectorAll !== 'function') return;
-    for (const block of host.querySelectorAll('.cadence-related-block')) {
-      if (keep && block === keep) continue;
+  _removeLegacyRelatedTasksBlocks() {
+    if (typeof document === 'undefined') return;
+    for (const block of document.querySelectorAll('.cadence-related-block')) {
       block.remove();
     }
   }
@@ -375,69 +206,6 @@ class Plugin extends CollectionPlugin {
       return this._dateOnly(new Date(base.getFullYear(), base.getMonth() + 3, 1));
     }
     return this._dateOnly(new Date(base.getFullYear() + 1, 0, 1));
-  }
-
-  _createRelatedTaskRow(task, panel) {
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'cadence-related-item';
-    row.setAttribute('aria-label', task.text || 'Open related task');
-
-    const checkbox = document.createElement('span');
-    checkbox.className = 'cadence-related-checkbox ti ti-square';
-    checkbox.setAttribute('aria-hidden', 'true');
-    row.appendChild(checkbox);
-
-    const textWrap = document.createElement('span');
-    textWrap.className = 'cadence-related-text';
-    textWrap.textContent = task.text || 'Untitled task';
-    row.appendChild(textWrap);
-
-    const meta = document.createElement('span');
-    meta.className = 'cadence-related-meta';
-    if (task.dueDate) {
-      const due = document.createElement('span');
-      due.className = 'cadence-related-date';
-      due.textContent = this._formatRelatedDueDate(task.dueDate);
-      meta.appendChild(due);
-    }
-    const arrow = document.createElement('span');
-    arrow.className = 'cadence-related-arrow ti ti-arrow-up-right';
-    arrow.setAttribute('aria-hidden', 'true');
-    meta.appendChild(arrow);
-    row.appendChild(meta);
-
-    row.addEventListener('click', (ev) => {
-      void this._openRelatedTask(ev, task.line, panel);
-    });
-    return row;
-  }
-
-  async _openRelatedTask(ev, line, panel) {
-    ev.preventDefault();
-    ev.stopPropagation();
-    const targetPanel = await this._getTargetPanel(panel, ev);
-    if (targetPanel && typeof targetPanel.navigateTo === 'function') {
-      try {
-        const ok = await targetPanel.navigateTo({ itemGuid: line.guid, highlight: true });
-        if (ok) {
-          if (typeof this.ui.setActivePanel === 'function') {
-            this.ui.setActivePanel(targetPanel);
-          }
-          return;
-        }
-      } catch (error) {
-        // ignore and fall through
-      }
-    }
-
-    const record = line.getRecord ? line.getRecord() : null;
-    if (record && targetPanel && this._navigateToRecord(targetPanel, record.guid)) {
-      return;
-    }
-    if (record) {
-      this._navigateToUrl(record.guid, ev);
-    }
   }
 
   _extractLineDueDate(line) {
