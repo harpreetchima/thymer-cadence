@@ -1,6 +1,6 @@
 # Thymer Cadence Periodic Notes
 
-Reusable Thymer collection plugin for three normal collections:
+Reusable Thymer collection runtime for the optional weekly, monthly, and yearly collections managed by `Cadence Control`.
 
 - `Weekly Notes`
 - `Monthly Notes`
@@ -23,8 +23,8 @@ Planned behavior:
 
 Current scaffold:
 
-- `plugin.js` - shared collection plugin entry point
-- `plugin.css` - optional CSS file
+- `plugin.js` - shared collection runtime entry point
+- `plugin.css` - popup/calendar styling for the periodic runtime
 - `plugin.weekly.json` - weekly collection config
 - `plugin.monthly.json` - monthly collection config
 - `plugin.yearly.json` - yearly collection config

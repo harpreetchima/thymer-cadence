@@ -79,6 +79,13 @@
   color: var(--text-hilite);
 }
 
+.cmdpal--inline .id--datepicker .cadence-datepicker-link.is-disabled,
+.cmdpal--inline .id--datepicker .cadence-datepicker-weeknum.is-disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.75;
+}
+
 .cmdpal--inline .id--datepicker .cadence-native-nav {
   display: flex !important;
   gap: 4px !important;

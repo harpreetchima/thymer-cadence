@@ -1,46 +1,54 @@
 # Thymer Cadence
 
-Working repo for extending Thymer's native `Daily Note` into a broader periodic notes flow under the `Thymer Cadence` name.
+Thymer Cadence upgrades a user's Daily Notes journal into a configurable cadence system with optional weekly, monthly, and yearly note collections.
 
-Current direction:
+## What ships now
 
-- Keep `Daily Note` as a real journal plugin by extending `JournalCorePlugin`.
-- Add compact native-style shortcuts for the matching week, month, and year records on daily pages.
-- Use normal collections for `Weekly Notes`, `Monthly Notes`, and `Yearly Notes`.
-- Use ISO weeks with Monday start.
-- Store a hidden `Period Key` value for stable chronological sorting (`YYYY-WW`, `YYYY-MM`, `YYYY`).
+- `cadence-control/` - the global setup + orchestration plugin that users install first
+- `daily-note/` - the runtime journal plugin that upgrades the selected Daily Notes collection
+- `periodic-notes/` - the shared runtime for weekly, monthly, and yearly collections
+- `scripts/build-control-plugin.mjs` - generates the installable `cadence-control/plugin.js` bundle from the runtime source files
 
-Compact nav labels:
+## User-facing rollout model
 
-- Week: `W11`
-- Month: `Mar`
-- Year: `2026`
+- Users install `Cadence Control` as a global plugin.
+- On first load, Cadence prompts them to choose their Daily Notes journal collection.
+- Weekly, monthly, and yearly notes can be enabled independently from the settings panel.
+- Each period type can adopt an existing collection or create a new managed collection.
+- Cadence provisions the selected collections, adds required metadata fields, upgrades the Daily Notes popup, and keeps runtime plugin code in sync from shared workspace settings.
 
-Target UI:
+## Runtime behavior
 
-- Daily Note page: existing native top nav row above the title, extending `Daily Note / < Today >` with `W11`, `Mar`, and `2026` buttons for the matching period records.
-- Weekly page: native collection row with the collection name, the active view button, and compact period nav (example while the current week is open: `Weekly Notes / < W11 >`).
-- Monthly page: native collection row with compact month nav (example: `Monthly Notes / < Mar >`).
-- Yearly page: native collection row with compact year nav (example: `Yearly Notes / < 2026 >`).
+- Daily Notes keeps the native journal experience and extends the top nav and native calendar popup.
+- Weekly / Monthly / Yearly collections use the shared periodic runtime with a native-feeling popup calendar.
+- Disabled period types are hidden from the Daily Notes nav and rendered as non-clickable in cadence popups.
+- Cadence always keeps hidden backend metadata for ordering:
+  - `period_start`
+  - `period_key`
 
-Current behavior:
+## Limited title format support
 
-- Daily buttons open or create the matching week, month, and year records for the viewed day.
-- Period pages use left and right buttons relative to the open record.
-- The center button stays anchored to the current real-world week, month, or year, matching Thymer's native `Today` behavior.
-- `Period Start` is written automatically for created period records; `Period End` is intentionally omitted for now because nav + sorting only need the start boundary.
+Cadence supports a limited Moment-style subset for note titles:
 
-Repo layout:
+- `GGGG`, `YYYY`, `YY`
+- `M`, `MM`, `MMM`, `MMMM`
+- `W`, `WW`
+- literals in square brackets, e.g. `GGGG-[W]WW`
 
-- `daily-note/` - local working copy of the existing Daily Note journal plugin
-- `periodic-notes/` - reusable collection plugin for weekly, monthly, and yearly collections
+Examples:
 
-Local folder:
+- Weekly: `GGGG-[W]WW` -> `2026-W12`
+- Monthly: `MMM YYYY` -> `Mar 2026`
+- Yearly: `YYYY` -> `2026`
 
-- `/Users/harpreetchima/Documents/Projects/chima-thymer/plugins/thymer-cadence/`
+## Development notes
 
-Status:
+- Edit the runtime sources in `daily-note/` and `periodic-notes/`.
+- Edit the control-plane source in `cadence-control/plugin.template.js`.
+- Rebuild the installable control plugin with:
 
-- Local implementation and Thymer workspace prototype are in place
-- Period navigation, `Period Start`, and hidden `Period Key` metadata are working
-- Future work is now focused on follow-up UI ideas like the calendar surface
+```bash
+node scripts/build-control-plugin.mjs
+```
+
+- The generated installable artifact lives at `cadence-control/plugin.js`.

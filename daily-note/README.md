@@ -1,11 +1,12 @@
-# Daily Note
+# Daily Notes
 
-This package is the working copy of the existing Thymer `Daily Note` journal plugin.
+This package is the working copy of the Cadence-upgraded Thymer `Daily Notes` journal plugin.
 
 Role:
 
 - preserve Thymer's native daily journal behavior
 - extend the native top navigation row with compact links to the matching week, month, and year records
+- upgrade the native inline date picker so it can jump across daily, weekly, monthly, and yearly notes
 
 Planned behavior on daily pages only:
 

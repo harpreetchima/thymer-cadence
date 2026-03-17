@@ -1,41 +1,13 @@
 class Plugin extends JournalCorePlugin {
   onLoad() {
-    this._version = '0.1.5';
+    this._version = '0.2.0';
     if (typeof super.onLoad === 'function') super.onLoad();
 
-    this._weeklyButton = this.addCollectionNavigationButton({
-      label: 'W',
-      tooltip: 'Open weekly note',
-      onlyWhenExpanded: true,
-      onClick: ({ ev, panel, record }) => this._openPeriodNote({
-        ev,
-        panel,
-        periodMode: 'weekly',
-        sourceDate: this._sourceDateFromRecord(record),
-      }),
-    });
-    this._monthlyButton = this.addCollectionNavigationButton({
-      label: 'Mon',
-      tooltip: 'Open monthly note',
-      onlyWhenExpanded: true,
-      onClick: ({ ev, panel, record }) => this._openPeriodNote({
-        ev,
-        panel,
-        periodMode: 'monthly',
-        sourceDate: this._sourceDateFromRecord(record),
-      }),
-    });
-    this._yearlyButton = this.addCollectionNavigationButton({
-      label: 'YYYY',
-      tooltip: 'Open yearly note',
-      onlyWhenExpanded: true,
-      onClick: ({ ev, panel, record }) => this._openPeriodNote({
-        ev,
-        panel,
-        periodMode: 'yearly',
-        sourceDate: this._sourceDateFromRecord(record),
-      }),
-    });
+    this._cadenceConfig = this._getCadenceConfig();
+
+    this._weeklyButton = this._createPeriodButton('weekly');
+    this._monthlyButton = this._createPeriodButton('monthly');
+    this._yearlyButton = this._createPeriodButton('yearly');
 
     this.events.on('panel.navigated', () => this._refreshButtons());
     this.events.on('panel.focused', () => this._refreshButtons());
@@ -49,6 +21,23 @@ class Plugin extends JournalCorePlugin {
     if (this._weeklyButton) this._weeklyButton.remove();
     if (this._monthlyButton) this._monthlyButton.remove();
     if (this._yearlyButton) this._yearlyButton.remove();
+  }
+
+  _createPeriodButton(periodMode) {
+    const settings = this._getPeriodSettings(periodMode);
+    if (!settings.enabled) return null;
+
+    return this.addCollectionNavigationButton({
+      label: this._buttonPlaceholder(periodMode),
+      tooltip: `Open ${periodMode} note`,
+      onlyWhenExpanded: true,
+      onClick: ({ ev, panel, record }) => this._openPeriodNote({
+        ev,
+        panel,
+        periodMode,
+        sourceDate: this._sourceDateFromRecord(record),
+      }),
+    });
   }
 
   _installDatepickerEnhancements() {
@@ -124,12 +113,9 @@ class Plugin extends JournalCorePlugin {
     links.querySelector('.cadence-datepicker-dot')?.remove();
     if (!monthButton || !yearButton) return;
 
-    monthButton.textContent = displayedDate.toLocaleDateString('en-US', { month: 'long' });
-    yearButton.textContent = String(displayedDate.getFullYear());
+    this._syncDatepickerPeriodLink(monthButton, 'monthly', displayedDate.toLocaleDateString('en-US', { month: 'long' }), displayedDate);
+    this._syncDatepickerPeriodLink(yearButton, 'yearly', String(displayedDate.getFullYear()), displayedDate);
     currentMonthTrigger.title = 'Open month and year picker';
-
-    this._bindDatepickerAction(monthButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'monthly', displayedDate));
-    this._bindDatepickerAction(yearButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'yearly', displayedDate));
   }
 
   _patchDatepickerGrid({ weekdays, dayGrid, dayCells }) {
@@ -147,6 +133,7 @@ class Plugin extends JournalCorePlugin {
     });
 
     dayCells.forEach((cell) => dayGrid.appendChild(cell));
+    const weeklyEnabled = this._getPeriodSettings('weekly').enabled;
     for (let index = 0; index < dayCells.length; index += 7) {
       const mondayCell = dayCells[index];
       const mondayDate = this._dateFromPickerValue(mondayCell?.dataset?.date || '');
@@ -158,9 +145,28 @@ class Plugin extends JournalCorePlugin {
       weekButton.className = 'cadence-datepicker-weeknum';
       weekButton.textContent = String(weekInfo.week);
       weekButton.title = `Open weekly note for W${weekInfo.week} ${weekInfo.year}`;
-      this._bindDatepickerAction(weekButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'weekly', mondayDate));
+      weekButton.disabled = !weeklyEnabled;
+      weekButton.classList.toggle('is-disabled', !weeklyEnabled);
+      if (weeklyEnabled) {
+        this._bindDatepickerAction(weekButton, (ev) => this._handleDatepickerPeriodOpen(ev, 'weekly', mondayDate));
+      } else {
+        this._clearDatepickerAction(weekButton);
+      }
       dayGrid.insertBefore(weekButton, mondayCell);
     }
+  }
+
+  _syncDatepickerPeriodLink(button, periodMode, label, sourceDate) {
+    const settings = this._getPeriodSettings(periodMode);
+    button.textContent = label;
+    button.disabled = !settings.enabled;
+    button.classList.toggle('is-disabled', !settings.enabled);
+    if (settings.enabled) {
+      this._bindDatepickerAction(button, (ev) => this._handleDatepickerPeriodOpen(ev, periodMode, sourceDate));
+      return;
+    }
+
+    this._clearDatepickerAction(button);
   }
 
   _patchDatepickerShell({ popup, wrapper }) {
@@ -248,7 +254,17 @@ class Plugin extends JournalCorePlugin {
     };
   }
 
+  _clearDatepickerAction(element) {
+    element.onpointerdown = null;
+    element.onpointerup = null;
+    element.onmousedown = null;
+    element.onclick = null;
+    element.onkeydown = null;
+    element.onblur = null;
+  }
+
   _handleDatepickerPeriodOpen(ev, periodMode, sourceDate) {
+    if (!this._getPeriodSettings(periodMode).enabled) return;
     ev.preventDefault();
     ev.stopPropagation();
     void this._openPeriodNote({
@@ -286,6 +302,11 @@ class Plugin extends JournalCorePlugin {
   }
 
   async _openPeriodNote({ ev, panel, periodMode, sourceDate }) {
+    if (!this._getPeriodSettings(periodMode).enabled) {
+      this._toast('Thymer Cadence', `${this._periodLabel(periodMode)} notes are not enabled.`);
+      return;
+    }
+
     const collection = await this._findPeriodCollection(periodMode);
     if (!collection) {
       this._toast('Thymer Cadence', `Collection not found for ${periodMode} notes.`);
@@ -314,14 +335,11 @@ class Plugin extends JournalCorePlugin {
   }
 
   async _findPeriodCollection(periodMode) {
-    const config = this.getConfiguration()?.custom || {};
-    const defaults = {
-      weekly: 'Weekly Notes',
-      monthly: 'Monthly Notes',
-      yearly: 'Yearly Notes',
-    };
-    const guid = config[`${periodMode}CollectionGuid`] || null;
-    const name = config[`${periodMode}CollectionName`] || defaults[periodMode];
+    const settings = this._getPeriodSettings(periodMode);
+    if (!settings.enabled) return null;
+
+    const guid = settings.collectionGuid || null;
+    const name = settings.collectionName || this._defaultCollectionName(periodMode);
     const collections = await this.data.getAllCollections();
 
     if (guid) {
@@ -358,14 +376,32 @@ class Plugin extends JournalCorePlugin {
   }
 
   _setPeriodMetadata(record, periodMode, periodStart) {
-    const periodProperty = record.prop('period_start') || record.prop('Period Start');
+    const settings = this._getPeriodSettings(periodMode);
+    const periodProperty = this._resolveProperty(record, [
+      settings.periodStartFieldId,
+      'period_start',
+      'Period Start',
+    ]);
     if (periodProperty) {
       periodProperty.set(this._dateTimeValue(periodStart));
     }
 
-    const keyProperty = record.prop('period_key') || record.prop('Period Key');
-    if (keyProperty) {
-      keyProperty.set(this._periodKey(periodMode, periodStart));
+    const canonicalKeyProperty = this._resolveProperty(record, ['period_key', 'Period Key']);
+    if (canonicalKeyProperty) {
+      canonicalKeyProperty.set(this._periodKey(periodMode, periodStart));
+    }
+
+    const orderProperty = this._resolveProperty(record, [
+      settings.orderFieldId,
+      'period_key',
+      'Period Key',
+    ]);
+    if (orderProperty) {
+      if (settings.orderFieldKind === 'period_start') {
+        orderProperty.set(this._dateTimeValue(periodStart));
+      } else {
+        orderProperty.set(this._periodKey(periodMode, periodStart));
+      }
     }
   }
 
@@ -441,10 +477,24 @@ class Plugin extends JournalCorePlugin {
   _recordPeriodKey(periodMode, record) {
     if (!record) return null;
 
-    if (typeof record.text === 'function') {
-      const keyText = record.text('period_key') || record.text('Period Key');
-      if (keyText) return keyText;
+    const settings = this._getPeriodSettings(periodMode);
+
+    if (settings.orderFieldKind === 'period_start') {
+      const orderDate = this._recordDateValue(record, [
+        settings.orderFieldId,
+        settings.periodStartFieldId,
+        'period_start',
+        'Period Start',
+      ]);
+      if (orderDate) return this._periodKey(periodMode, orderDate);
     }
+
+    const keyText = this._recordTextValue(record, [
+      settings.orderFieldId,
+      'period_key',
+      'Period Key',
+    ]);
+    if (keyText) return keyText;
 
     const derivedDate = this._recordPeriodStartFromTitle(periodMode, record);
     return derivedDate ? this._periodKey(periodMode, derivedDate) : null;
@@ -454,15 +504,13 @@ class Plugin extends JournalCorePlugin {
     if (!record) return null;
 
     let periodStart = null;
-    if (typeof record.date === 'function') {
-      periodStart = record.date('period_start') || record.date('Period Start');
-    }
-    if (!periodStart && typeof record.prop === 'function') {
-      const prop = record.prop('period_start') || record.prop('Period Start');
-      if (prop && typeof prop.date === 'function') {
-        periodStart = prop.date();
-      }
-    }
+    const settings = this._getPeriodSettings(periodMode);
+    periodStart = this._recordDateValue(record, [
+      settings.periodStartFieldId,
+      settings.orderFieldKind === 'period_start' ? settings.orderFieldId : null,
+      'period_start',
+      'Period Start',
+    ]);
     if (periodStart) return this._dateOnly(periodStart);
 
     const title = typeof record.getName === 'function' ? record.getName() : null;
@@ -542,16 +590,8 @@ class Plugin extends JournalCorePlugin {
   }
 
   _periodTitle(periodMode, date) {
-    if (periodMode === 'weekly') {
-      const info = this._isoWeekInfo(date);
-      return `${info.year} W${info.week}`;
-    }
-
-    if (periodMode === 'monthly') {
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    }
-
-    return String(date.getFullYear());
+    const settings = this._getPeriodSettings(periodMode);
+    return this._formatPeriodTitle(periodMode, date, settings.titleFormat);
   }
 
   _normalizePeriodStart(periodMode, inputDate) {
@@ -610,5 +650,169 @@ class Plugin extends JournalCorePlugin {
       dismissible: true,
       autoDestroyTime: 3000,
     });
+  }
+
+  _getCadenceConfig() {
+    const custom = this.getConfiguration()?.custom || {};
+    const cadence = custom.cadence && typeof custom.cadence === 'object' ? custom.cadence : {};
+    const periods = {};
+
+    for (const periodMode of ['weekly', 'monthly', 'yearly']) {
+      const source = cadence.periods?.[periodMode] || {};
+      const collectionGuid = source.collectionGuid || custom[`${periodMode}CollectionGuid`] || '';
+      const collectionName = source.collectionName || custom[`${periodMode}CollectionName`] || this._defaultCollectionName(periodMode);
+      const enabled = typeof source.enabled === 'boolean'
+        ? source.enabled
+        : !!(collectionGuid || custom[`${periodMode}CollectionName`]);
+      const periodStartFieldId = source.periodStartFieldId || 'period_start';
+      const orderFieldId = source.orderFieldId || 'period_key';
+      const orderFieldKind = source.orderFieldKind || (orderFieldId === periodStartFieldId ? 'period_start' : 'period_key');
+
+      periods[periodMode] = {
+        enabled,
+        collectionGuid,
+        collectionName,
+        titleFormat: source.titleFormat || this._defaultTitleFormat(periodMode),
+        periodStartFieldId,
+        orderFieldId,
+        orderFieldKind,
+      };
+    }
+
+    return {
+      schemaVersion: cadence.schemaVersion || 1,
+      periods,
+    };
+  }
+
+  _getPeriodSettings(periodMode) {
+    if (!this._cadenceConfig) {
+      this._cadenceConfig = this._getCadenceConfig();
+    }
+    return this._cadenceConfig.periods?.[periodMode] || {
+      enabled: false,
+      collectionGuid: '',
+      collectionName: this._defaultCollectionName(periodMode),
+      titleFormat: this._defaultTitleFormat(periodMode),
+      periodStartFieldId: 'period_start',
+      orderFieldId: 'period_key',
+      orderFieldKind: 'period_key',
+    };
+  }
+
+  _defaultCollectionName(periodMode) {
+    if (periodMode === 'weekly') return 'Weekly Notes';
+    if (periodMode === 'monthly') return 'Monthly Notes';
+    return 'Yearly Notes';
+  }
+
+  _defaultTitleFormat(periodMode) {
+    if (periodMode === 'weekly') return 'GGGG-[W]WW';
+    if (periodMode === 'monthly') return 'MMM YYYY';
+    return 'YYYY';
+  }
+
+  _buttonPlaceholder(periodMode) {
+    if (periodMode === 'weekly') return 'W';
+    if (periodMode === 'monthly') return 'Mon';
+    return 'YYYY';
+  }
+
+  _periodLabel(periodMode) {
+    if (periodMode === 'weekly') return 'Weekly';
+    if (periodMode === 'monthly') return 'Monthly';
+    return 'Yearly';
+  }
+
+  _resolveProperty(record, candidates) {
+    if (!record || typeof record.prop !== 'function') return null;
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const prop = record.prop(candidate);
+      if (prop) return prop;
+    }
+    return null;
+  }
+
+  _recordTextValue(record, candidates) {
+    if (!record || typeof record.text !== 'function') return '';
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      const value = record.text(candidate);
+      if (typeof value === 'string' && value) return value;
+    }
+    return '';
+  }
+
+  _recordDateValue(record, candidates) {
+    if (!record) return null;
+    for (const candidate of candidates) {
+      if (!candidate) continue;
+      if (typeof record.date === 'function') {
+        const value = record.date(candidate);
+        if (value instanceof Date) return value;
+      }
+      if (typeof record.prop === 'function') {
+        const prop = record.prop(candidate);
+        if (prop && typeof prop.date === 'function') {
+          const value = prop.date();
+          if (value instanceof Date) return value;
+        }
+      }
+    }
+    return null;
+  }
+
+  _formatPeriodTitle(periodMode, date, format) {
+    const normalized = this._normalizePeriodStart(periodMode, date);
+    const info = this._isoWeekInfo(normalized);
+    const monthShort = normalized.toLocaleDateString('en-US', { month: 'short' });
+    const monthLong = normalized.toLocaleDateString('en-US', { month: 'long' });
+    const replacements = {
+      GGGG: String(info.year),
+      gggg: String(info.year),
+      YYYY: String(normalized.getFullYear()),
+      YY: String(normalized.getFullYear()).slice(-2),
+      MMMM: monthLong,
+      MMM: monthShort,
+      MM: String(normalized.getMonth() + 1).padStart(2, '0'),
+      M: String(normalized.getMonth() + 1),
+      DD: String(normalized.getDate()).padStart(2, '0'),
+      D: String(normalized.getDate()),
+      WW: String(info.week).padStart(2, '0'),
+      ww: String(info.week).padStart(2, '0'),
+      W: String(info.week),
+      w: String(info.week),
+    };
+    return this._applyLimitedFormat(format || this._defaultTitleFormat(periodMode), replacements);
+  }
+
+  _applyLimitedFormat(format, replacements) {
+    const source = String(format || '');
+    let output = '';
+    for (let index = 0; index < source.length;) {
+      if (source[index] === '[') {
+        const endIndex = source.indexOf(']', index + 1);
+        if (endIndex !== -1) {
+          output += source.slice(index + 1, endIndex);
+          index = endIndex + 1;
+          continue;
+        }
+      }
+
+      let matched = false;
+      for (const token of ['GGGG', 'gggg', 'YYYY', 'MMMM', 'MMM', 'MM', 'M', 'DD', 'D', 'WW', 'ww', 'W', 'w', 'YY']) {
+        if (!source.startsWith(token, index)) continue;
+        output += replacements[token] ?? token;
+        index += token.length;
+        matched = true;
+        break;
+      }
+      if (matched) continue;
+
+      output += source[index];
+      index += 1;
+    }
+    return output;
   }
 }

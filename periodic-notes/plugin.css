@@ -58,6 +58,14 @@
   color: var(--cmdpal-hover-fg-color, var(--text-hilite));
 }
 
+.cmdpal--inline.cadence-period-picker-popup .cadence-period-picker-link.is-disabled,
+.cmdpal--inline.cadence-period-picker-popup .cadence-period-picker-weeknum.is-disabled,
+.cmdpal--inline.cadence-period-picker-popup .cadence-period-picker-day.is-disabled {
+  color: var(--text-muted);
+  opacity: 0.75;
+  cursor: default;
+}
+
 .cmdpal--inline.cadence-period-picker-popup .cadence-period-picker-dot {
   border: none;
   background: transparent;
