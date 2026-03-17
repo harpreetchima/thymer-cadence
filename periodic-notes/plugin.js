@@ -1,6 +1,6 @@
 class Plugin extends CollectionPlugin {
   onLoad() {
-    this._version = '0.4.6';
+    this._version = '0.4.7';
     this._periodMode = this.getConfiguration()?.custom?.periodMode || 'weekly';
     this._cadenceConfig = this._getCadenceConfig();
     this._periodSettings = this._getPeriodSettings(this._periodMode);
@@ -213,6 +213,10 @@ class Plugin extends CollectionPlugin {
   }
 
   _findRelatedTasksAnchor(host) {
+    const inlineContentAnchor = (host && host.querySelector('.content-container > listview-editor, .content-container > .listview-focus'))
+      || document.querySelector('.content-container > listview-editor, .content-container > .listview-focus');
+    if (inlineContentAnchor) return inlineContentAnchor;
+
     const preferredSelectors = [
       '.id--h1-area .title.id--h1',
       'h1.title.id--h1',
@@ -297,6 +301,14 @@ class Plugin extends CollectionPlugin {
       this._relatedTasksBlockElement.className = 'cadence-related-block';
       this._relatedTasksBlockElement.dataset.cadenceRelatedBlock = 'true';
     }
+    const prefersBefore = !!(anchor && typeof anchor.matches === 'function' && anchor.matches('listview-editor, .listview-focus'));
+    if (prefersBefore) {
+      if (anchor.previousElementSibling !== this._relatedTasksBlockElement) {
+        anchor.insertAdjacentElement('beforebegin', this._relatedTasksBlockElement);
+      }
+      return this._relatedTasksBlockElement;
+    }
+
     if (anchor.nextElementSibling !== this._relatedTasksBlockElement) {
       anchor.insertAdjacentElement('afterend', this._relatedTasksBlockElement);
     }
