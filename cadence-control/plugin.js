@@ -459,7 +459,7 @@ const PERIODIC_PLUGIN_TEMPLATES = {
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.2';
+    this._version = '0.1.3';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -621,6 +621,7 @@ class Plugin extends AppPlugin {
           </div>
           ${this._renderStatus(validation, state)}
           ${this._renderDailySection(state, dailyChoices)}
+          ${this._renderPeriodsIntro()}
           ${this._renderPeriodSection('weekly', state, periodChoices)}
           ${this._renderPeriodSection('monthly', state, periodChoices)}
           ${this._renderPeriodSection('quarterly', state, periodChoices)}
@@ -754,6 +755,17 @@ class Plugin extends AppPlugin {
     `;
   }
 
+  _renderPeriodsIntro() {
+    return `
+      <div class="form-field-group cadence-section-group cadence-periods-intro">
+        <div class="form-field">
+          <div class="cadence-section-title">Period Notes</div>
+          <div class="text-details cadence-help cadence-help-tight">Cadence automatically orders period notes with hidden <code>Cadence Period Key</code> metadata and replaces the standard Related Section query with a native <code>Upcoming</code> task section tied to the active page. Adopting an existing collection will replace any custom code and CSS on that collection.</div>
+        </div>
+      </div>
+    `;
+  }
+
   _renderPeriodSection(periodMode, state, periodChoices) {
     const settings = state.options.periods[periodMode];
     const collectionValue = settings.sourceMode === 'create'
@@ -780,7 +792,6 @@ class Plugin extends AppPlugin {
           <div class="form-field">
             <div class="text-details cadence-field-label">Collection</div>
             <select class="form-input w-full" data-role="period-collection" data-mode="${periodMode}">${collectionOptions}</select>
-            <div class="text-details cadence-help">Pick an existing collection to adopt or create a new managed collection. Adopting will replace any custom code and CSS already installed on that collection.</div>
           </div>
           ${settings.sourceMode === 'create' ? `
             <div class="form-field">
@@ -791,10 +802,7 @@ class Plugin extends AppPlugin {
           <div class="form-field">
             <div class="text-details cadence-field-label">Title format</div>
             <input class="form-input w-full" data-role="title-format" data-mode="${periodMode}" value="${this._escapeHtml(settings.titleFormat)}" placeholder="${this._escapeHtml(this._defaultTitleFormat(periodMode))}">
-            <div class="text-details cadence-help">Supported subset: <code>GGGG</code>, <code>YYYY</code>, <code>YY</code>, <code>Q</code>, <code>M</code>, <code>MM</code>, <code>MMM</code>, <code>MMMM</code>, <code>W</code>, <code>WW</code>, plus literals in square brackets. Preview: <strong>${this._escapeHtml(this._formatPeriodTitle(periodMode, new Date(), settings.titleFormat))}</strong></div>
-          </div>
-          <div class="form-field">
-            <div class="text-details cadence-help">Cadence always uses its hidden <code>Cadence Period Key</code> metadata for ordering. It also replaces the collection's standard Related Section query with a native <code>Upcoming</code> task section that follows the active ${this._periodLabel(periodMode).toLowerCase()} page.</div>
+            <div class="text-details cadence-help cadence-help-tight">Tokens: <code>GGGG</code>, <code>YYYY</code>, <code>YY</code>, <code>Q</code>, <code>M</code>, <code>MM</code>, <code>MMM</code>, <code>MMMM</code>, <code>W</code>, <code>WW</code>. Use square brackets for literals. Preview: <strong>${this._escapeHtml(this._formatPeriodTitle(periodMode, new Date(), settings.titleFormat))}</strong></div>
           </div>
         ` : `
           <div class="form-field">
@@ -1602,6 +1610,10 @@ class Plugin extends AppPlugin {
       .cadence-status-group {
         margin-bottom: 16px;
       }
+      .cadence-periods-intro .form-field {
+        border-radius: var(--radius-normal);
+        background: color-mix(in srgb, var(--button-bg-hover-color, rgba(0,0,0,0.05)) 55%, transparent);
+      }
       .cadence-message {
         border-radius: var(--radius-normal);
       }
@@ -1644,6 +1656,9 @@ class Plugin extends AppPlugin {
       }
       .cadence-help {
         margin-top: 8px;
+      }
+      .cadence-help-tight {
+        margin-top: 4px;
       }
       .cadence-switch {
         border: none;
