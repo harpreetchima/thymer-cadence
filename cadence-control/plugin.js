@@ -459,7 +459,7 @@ const PERIODIC_PLUGIN_TEMPLATES = {
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.1';
+    this._version = '0.1.2';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -688,9 +688,6 @@ class Plugin extends AppPlugin {
             state.options.periods[periodMode].sourceMode = 'existing';
             state.options.periods[periodMode].collectionGuid = collection?.getGuid() || '';
             state.options.periods[periodMode].collectionName = collection?.getName() || '';
-            const choice = this._defaultOrderFieldChoice(collection, state.options.periods[periodMode]);
-            state.options.periods[periodMode].orderFieldId = choice.id;
-            state.options.periods[periodMode].orderFieldKind = choice.kind;
           }
           state.success = '';
           render();
@@ -707,14 +704,6 @@ class Plugin extends AppPlugin {
           state.options.periods[periodMode].titleFormat = String(ev.target.value || '').trim() || this._defaultTitleFormat(periodMode);
           state.success = '';
           render();
-        });
-
-        const orderSelect = host.querySelector(`[data-role="order-field"][data-mode="${periodMode}"]`);
-        orderSelect?.addEventListener('change', (ev) => {
-          const parsed = this._parseOrderFieldChoice(String(ev.target.value || ''));
-          state.options.periods[periodMode].orderFieldId = parsed.id;
-          state.options.periods[periodMode].orderFieldKind = parsed.kind;
-          state.success = '';
         });
       }
     };
@@ -774,15 +763,6 @@ class Plugin extends AppPlugin {
       .concat(periodChoices.map((choice) => `<option value="${this._escapeHtml(choice.guid)}"${choice.guid === collectionValue ? ' selected' : ''}>${this._escapeHtml(choice.name)}</option>`))
       .join('');
 
-    const selectedCollection = settings.collectionGuid
-      ? this._findCollectionByGuidOrName(state.collections, settings.collectionGuid, settings.collectionName, { journalOnly: false })
-      : null;
-    const orderChoices = this._getOrderFieldChoices(selectedCollection);
-    const orderValue = `${settings.orderFieldId}::${settings.orderFieldKind}`;
-    const orderOptions = orderChoices
-      .map((choice) => `<option value="${this._escapeHtml(`${choice.id}::${choice.kind}`)}"${`${choice.id}::${choice.kind}` === orderValue ? ' selected' : ''}>${this._escapeHtml(choice.label)}</option>`)
-      .join('');
-
     return `
       <div class="form-field-group cadence-section-group">
         <div class="form-field">
@@ -814,9 +794,7 @@ class Plugin extends AppPlugin {
             <div class="text-details cadence-help">Supported subset: <code>GGGG</code>, <code>YYYY</code>, <code>YY</code>, <code>Q</code>, <code>M</code>, <code>MM</code>, <code>MMM</code>, <code>MMMM</code>, <code>W</code>, <code>WW</code>, plus literals in square brackets. Preview: <strong>${this._escapeHtml(this._formatPeriodTitle(periodMode, new Date(), settings.titleFormat))}</strong></div>
           </div>
           <div class="form-field">
-            <div class="text-details cadence-field-label">Order field</div>
-            <select class="form-input w-full" data-role="order-field" data-mode="${periodMode}">${orderOptions}</select>
-            <div class="text-details cadence-help">Cadence always keeps hidden backend metadata. This controls which property the collection sorts by.</div>
+            <div class="text-details cadence-help">Cadence always uses its hidden <code>Cadence Period Key</code> metadata for ordering. It also replaces the collection's standard Related Section query with a native <code>Upcoming</code> task section that follows the active ${this._periodLabel(periodMode).toLowerCase()} page.</div>
           </div>
         ` : `
           <div class="form-field">
@@ -918,8 +896,8 @@ class Plugin extends AppPlugin {
       out.periods[periodMode].newCollectionName = typeof source.newCollectionName === 'string' && source.newCollectionName.trim() ? source.newCollectionName.trim() : out.periods[periodMode].collectionName;
       out.periods[periodMode].titleFormat = typeof source.titleFormat === 'string' && source.titleFormat.trim() ? source.titleFormat.trim() : defaults.periods[periodMode].titleFormat;
       out.periods[periodMode].periodStartFieldId = 'period_start';
-      out.periods[periodMode].orderFieldId = typeof source.orderFieldId === 'string' && source.orderFieldId.trim() ? source.orderFieldId.trim() : defaults.periods[periodMode].orderFieldId;
-      out.periods[periodMode].orderFieldKind = source.orderFieldKind === 'period_start' ? 'period_start' : 'period_key';
+      out.periods[periodMode].orderFieldId = 'period_key';
+      out.periods[periodMode].orderFieldKind = 'period_key';
     }
 
     return out;
@@ -1009,9 +987,8 @@ class Plugin extends AppPlugin {
       if (!collection) continue;
       settings.collectionGuid = collection.getGuid();
       settings.collectionName = collection.getName();
-      const defaultChoice = this._defaultOrderFieldChoice(collection, settings);
-      settings.orderFieldId = defaultChoice.id;
-      settings.orderFieldKind = defaultChoice.kind;
+      settings.orderFieldId = 'period_key';
+      settings.orderFieldKind = 'period_key';
     }
 
     return next;
@@ -1047,9 +1024,8 @@ class Plugin extends AppPlugin {
         current.collectionName = collection.getName();
         current.enabled = current.enabled || (!options.setupComplete && !!collection.getGuid());
         current.sourceMode = 'existing';
-        const defaultChoice = this._defaultOrderFieldChoice(collection, current);
-        current.orderFieldId = defaultChoice.id;
-        current.orderFieldKind = defaultChoice.kind;
+        current.orderFieldId = 'period_key';
+        current.orderFieldKind = 'period_key';
       }
     }
 
@@ -1068,43 +1044,6 @@ class Plugin extends AppPlugin {
       .filter((collection) => !(collection && collection.isJournalPlugin && collection.isJournalPlugin()))
       .map((collection) => ({ guid: collection.getGuid(), name: collection.getName() }))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  _getOrderFieldChoices(collection) {
-    const choices = [
-      { id: 'period_key', kind: 'period_key', label: 'Cadence Period Key (recommended)' },
-      { id: 'period_start', kind: 'period_start', label: 'Period Start' },
-    ];
-    if (!collection || typeof collection.getConfiguration !== 'function') return choices;
-
-    const conf = collection.getConfiguration() || {};
-    const fields = Array.isArray(conf.fields) ? conf.fields : [];
-    for (const field of fields) {
-      if (!field || !field.id || !field.label) continue;
-      if (field.id === 'period_key' || field.id === 'period_start') continue;
-      if (!['text', 'dynamic', 'datetime'].includes(field.type)) continue;
-      choices.push({
-        id: String(field.id),
-        kind: field.type === 'datetime' ? 'period_start' : 'period_key',
-        label: String(field.label),
-      });
-    }
-    return choices;
-  }
-
-  _defaultOrderFieldChoice(collection, currentSettings) {
-    const choices = this._getOrderFieldChoices(collection);
-    const currentValue = `${currentSettings.orderFieldId}::${currentSettings.orderFieldKind}`;
-    const existing = choices.find((choice) => `${choice.id}::${choice.kind}` === currentValue);
-    return existing || choices[0];
-  }
-
-  _parseOrderFieldChoice(value) {
-    const [id, kind] = String(value || '').split('::');
-    return {
-      id: id || 'period_key',
-      kind: kind === 'period_start' ? 'period_start' : 'period_key',
-    };
   }
 
   _validateWorkspaceOptions(options, collections) {
@@ -1132,9 +1071,6 @@ class Plugin extends AppPlugin {
       }
       if (!settings.titleFormat) {
         errors.push(`${this._periodLabel(periodMode)} notes need a title format.`);
-      }
-      if (!settings.orderFieldId) {
-        errors.push(`${this._periodLabel(periodMode)} notes need an order field.`);
       }
     }
 
@@ -1190,9 +1126,8 @@ class Plugin extends AppPlugin {
 
       settings.collectionGuid = collection.getGuid();
       settings.collectionName = settings.collectionName || collection.getName();
-      const choice = this._defaultOrderFieldChoice(collection, settings);
-      settings.orderFieldId = settings.orderFieldId || choice.id;
-      settings.orderFieldKind = settings.orderFieldKind || choice.kind;
+      settings.orderFieldId = 'period_key';
+      settings.orderFieldKind = 'period_key';
       periodCollections[periodMode] = { api: collection, created };
     }
 
@@ -1287,20 +1222,6 @@ class Plugin extends AppPlugin {
       read_only: false,
     });
 
-    if (settings.orderFieldId && settings.orderFieldId !== 'period_key' && settings.orderFieldId !== 'period_start') {
-      const existing = conf.fields.find((field) => field && field.id === settings.orderFieldId);
-      if (!existing && settings.orderFieldKind === 'period_key') {
-        this._ensureField(conf.fields, {
-          id: settings.orderFieldId,
-          label: this._humanizeFieldId(settings.orderFieldId),
-          type: 'text',
-          icon: 'ti-sort-descending-2',
-          active: false,
-          many: false,
-          read_only: false,
-        });
-      }
-    }
   }
 
   _ensureField(fields, spec) {
@@ -1357,8 +1278,8 @@ class Plugin extends AppPlugin {
         collectionName: source.collectionName || this._defaultCollectionName(periodMode),
         titleFormat: source.titleFormat || this._defaultTitleFormat(periodMode),
         periodStartFieldId: 'period_start',
-        orderFieldId: source.orderFieldId || 'period_key',
-        orderFieldKind: source.orderFieldKind || 'period_key',
+        orderFieldId: 'period_key',
+        orderFieldKind: 'period_key',
       };
     }
 
@@ -1645,12 +1566,6 @@ class Plugin extends AppPlugin {
   _dateTimeValue(inputDate) {
     const date = this._dateOnly(inputDate);
     return DateTime.dateOnly(date.getFullYear(), date.getMonth(), date.getDate()).value();
-  }
-
-  _humanizeFieldId(fieldId) {
-    return String(fieldId || '')
-      .replace(/[_-]+/g, ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
   }
 
   _unique(items) {
