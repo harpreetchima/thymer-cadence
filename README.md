@@ -7,11 +7,10 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 ## What It Does
 
 - Upgrades the chosen `Daily Notes` journal in place
-- Adds compact `W##`, month, quarter, and year links to the Daily Notes top nav
-- Extends the Daily Notes top calendar popup with period jumps and week links
 - Supports optional `Weekly Notes`, `Monthly Notes`, `Quarterly Notes`, and `Yearly Notes`
-- Creates a new period collection or adopts an existing one from one settings panel
-- Repairs managed plugin code, collection fields, and views from one command
+- Adds compact week,, month, quarter, and year links to the Daily Notes top nav
+- Extends the Daily Notes top calendar popup with week, month, quarter, and year links
+- Creates new period collections or adopts existing ones from settings panel
 - Uses hidden `period_start` and `period_key` metadata for chronological ordering
 - Drives a native `Upcoming` task section on period pages, scoped to the open record and carrying overdue tasks forward
 
@@ -22,7 +21,6 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 
 ## Requirements
 
-- A Thymer workspace with plugin editing access
 - One journal collection to use as `Daily Notes`
 
 ## Setup in Thymer
@@ -71,30 +69,6 @@ Examples:
 - `periodic-notes/` - shared runtime source for weekly, monthly, quarterly, and yearly notes
 - `scripts/build-control-plugin.mjs` - bundles the runtime sources into `cadence-control/plugin.js`
 - `tasks/` - project notes from active development sessions
-
-## Development
-
-1. Edit `cadence-control/plugin.template.js` for control-plane logic and the settings panel.
-2. Edit `daily-note/plugin.js`, `daily-note/plugin.css`, and `daily-note/plugin.json` for Daily Notes runtime work.
-3. Edit `periodic-notes/plugin.js`, `periodic-notes/plugin.css`, and the `periodic-notes/plugin.*.json` files for period-note runtime work.
-4. Rebuild the installable global plugin:
-
-```bash
-node scripts/build-control-plugin.mjs
-```
-
-5. Check the generated bundle when needed:
-
-```bash
-node --check cadence-control/plugin.js
-```
-
-## Contributing
-
-- Open an issue or discussion for larger product or UX changes.
-- Keep the settings panel native to Thymer: lean on `form-field-group`, `form-field`, `form-field-row`, `text-details`, and native `form-input` controls.
-- Rebuild `cadence-control/plugin.js` before opening a pull request.
-- Keep `README.md` current when setup, commands, or runtime behavior changes.
 
 ## License
 
