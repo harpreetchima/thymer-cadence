@@ -7,7 +7,7 @@ const PERIODIC_PLUGIN_TEMPLATES = __PERIODIC_PLUGIN_TEMPLATES__;
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.6';
+    this._version = '0.1.7';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -1217,9 +1217,6 @@ class Plugin extends AppPlugin {
       .cadence-message-warning {
         color: var(--panel-fg-color);
         background: color-mix(in srgb, var(--button-bg-hover-color, rgba(0,0,0,0.05)) 55%, transparent);
-      }
-      .cadence-section-group {
-        margin-bottom: 0;
       }
       .cadence-section-row {
         align-items: center;
