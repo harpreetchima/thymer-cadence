@@ -1,8 +1,15 @@
 # Thymer Cadence
 
-Thymer Cadence turns a standard `Daily Notes` journal into a cadence system with optional weekly, monthly, quarterly, and yearly notes. One global plugin, `Cadence Control`, handles setup, collection adoption or creation, runtime repair, and shared workspace settings.
+Thymer Cadence turns a standard `Daily Notes` journal into a cadence system with optional weekly, monthly, quarterly, and yearly notes. Users install one plugin, `Cadence Control`, and it provisions the rest.
 
 Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://github.com/thymerapp/thymer-plugin-sdk).
+
+## Files to Install
+
+- `plugin.json` - paste into Thymer **Configuration**
+- `plugin.js` - paste into Thymer **Custom Code**
+
+`plugin.js` already includes the bundled Daily Notes and period-note runtimes.
 
 ## Screenshots
 
@@ -41,8 +48,8 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 
 1. Open Thymer and go to `Plugins`.
 2. Create or open the global plugin `Cadence Control`.
-3. Paste `cadence-control/plugin.json` into **Configuration**.
-4. Paste `cadence-control/plugin.js` into **Custom Code**.
+3. Paste `plugin.json` into **Configuration**.
+4. Paste `plugin.js` into **Custom Code**.
 5. Save the plugin.
 6. Open Command Palette and run `Cadence: Settings`.
 7. Pick your `Daily Notes` journal collection.
@@ -50,13 +57,11 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 9. For each period type that is on, choose an existing collection or create a new one.
 10. Click `Save & Repair`.
 
-`Cadence Control` manages the runtime code for `daily-note/` and `periodic-notes/`. End users do not install those runtime files by hand.
-
 ## How Cadence Works
 
 - `Cadence Control` stores the shared workspace config and provisions managed collections
 - `Daily Notes` keeps Thymer's journal flow and adds cadence links to the top nav and top date popup
-- Period note collections share one runtime with period-specific `plugin.json` variants
+- Period note collections share one runtime with period-specific templates embedded in `plugin.js`
 - Period collections keep `period_start` and `period_key` hidden from the normal UI
 - Period views sort by `period_key` in descending order
 - Title formats use a small Moment-style token subset
@@ -78,11 +83,11 @@ Examples:
 
 ## Repository Layout
 
-- `cadence-control/` - global setup and repair plugin
-- `daily-note/` - Daily Notes runtime source
-- `periodic-notes/` - shared runtime source for weekly, monthly, quarterly, and yearly notes
+- `plugin.json` - installable Thymer plugin config
+- `plugin.js` - installable bundled plugin code
+- `README.md` - setup and usage guide
 - `screenshots/` - README images
-- `scripts/build-control-plugin.mjs` - bundles the runtime sources into `cadence-control/plugin.js`
+
 ## License
 
 No license file is present in this repo today.
