@@ -6,17 +6,17 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 
 ## Screenshots
 
-### Cadence Settings
+### Daily Notes Popup
 
-![Cadence Settings panel](screenshots/cadence-settings.png)
+![Daily Notes popup with cadence links](screenshots/daily-popup.png)
 
 ### Daily Notes Nav
 
 ![Daily Notes top navigation with cadence links](screenshots/daily-note-nav.png)
 
-### Daily Notes Popup
+### Cadence Settings
 
-![Daily Notes popup with cadence links](screenshots/daily-popup.png)
+![Cadence Settings panel](screenshots/cadence-settings.png)
 
 ## What It Does
 
