@@ -6,13 +6,13 @@ Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://git
 
 ## Screenshots
 
-### Daily Notes Popup
-
-![Daily Notes popup with cadence links](screenshots/daily-popup.png)
-
 ### Daily Notes Nav
 
 ![Daily Notes top navigation with cadence links](screenshots/daily-note-nav.png)
+
+### Daily Notes Popup
+
+![Daily Notes popup with cadence links](screenshots/daily-popup.png)
 
 ### Cadence Settings
 
