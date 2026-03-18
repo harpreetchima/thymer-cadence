@@ -4,13 +4,27 @@ Thymer Cadence turns a standard `Daily Notes` journal into a cadence system with
 
 Built for [Thymer](https://thymer.com/) with the [Thymer Plugin SDK](https://github.com/thymerapp/thymer-plugin-sdk).
 
+## Screenshots
+
+### Cadence Settings
+
+![Cadence Settings panel](screenshots/cadence-settings.png)
+
+### Daily Notes Nav
+
+![Daily Notes top navigation with cadence links](screenshots/daily-note-nav.png)
+
+### Daily Notes Popup
+
+![Daily Notes popup with cadence links](screenshots/daily-popup.png)
+
 ## What It Does
 
 - Upgrades the chosen `Daily Notes` journal in place
 - Supports optional `Weekly Notes`, `Monthly Notes`, `Quarterly Notes`, and `Yearly Notes`
-- Adds compact week,, month, quarter, and year links to the Daily Notes top nav
+- Adds compact week, month, quarter, and year links to the Daily Notes top nav
 - Extends the Daily Notes top calendar popup with week, month, quarter, and year links
-- Creates new period collections or adopts existing ones from settings panel
+- Creates new period collections or adopts existing ones from the settings panel
 - Uses hidden `period_start` and `period_key` metadata for chronological ordering
 - Drives a native `Upcoming` task section on period pages, scoped to the open record and carrying overdue tasks forward
 
@@ -67,9 +81,8 @@ Examples:
 - `cadence-control/` - global setup and repair plugin
 - `daily-note/` - Daily Notes runtime source
 - `periodic-notes/` - shared runtime source for weekly, monthly, quarterly, and yearly notes
+- `screenshots/` - README images
 - `scripts/build-control-plugin.mjs` - bundles the runtime sources into `cadence-control/plugin.js`
-- `tasks/` - project notes from active development sessions
-
 ## License
 
 No license file is present in this repo today.
