@@ -495,7 +495,7 @@ const PERIODIC_PLUGIN_TEMPLATES = {
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.7';
+    this._version = '0.1.8';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -687,7 +687,9 @@ class Plugin extends AppPlugin {
         try {
           state.options = await this._applyWorkspaceOptions(state.options, { showToasts: true });
           state.options.setupComplete = true;
-          state.success = 'Cadence settings saved and synced to the selected collections. Reopen this panel if you want to refresh the auto-detected collection lists.';
+          state.success = 'Cadence settings saved and synced to the selected collections.';
+          await refreshCollections(false);
+          state.options.setupComplete = true;
         } catch (error) {
           state.error = error?.message || 'Could not save Cadence settings.';
         } finally {
