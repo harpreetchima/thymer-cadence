@@ -495,7 +495,7 @@ const PERIODIC_PLUGIN_TEMPLATES = {
 
 class Plugin extends AppPlugin {
   onLoad() {
-    this._version = '0.1.5';
+    this._version = '0.1.6';
     this._commands = [];
 
     this.ui.injectCSS(this._css());
@@ -1664,15 +1664,15 @@ class Plugin extends AppPlugin {
   _css() {
     return `
       .cadence-shell {
-        padding: 18px;
+        padding: 12px;
         max-width: 920px;
       }
       .cadence-header {
         display: flex;
         justify-content: space-between;
-        gap: 16px;
+        gap: 10px;
         align-items: flex-start;
-        margin-bottom: 16px;
+        margin-bottom: 10px;
       }
       .cadence-header-actions {
         display: flex;
@@ -1683,13 +1683,13 @@ class Plugin extends AppPlugin {
         font-size: 20px;
         font-weight: 600;
         line-height: 1.15;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
       .cadence-subtitle {
         max-width: 720px;
       }
       .cadence-status-group {
-        margin-bottom: 16px;
+        margin-bottom: 0;
       }
       .cadence-message {
         border-radius: var(--radius-normal);
@@ -1707,18 +1707,18 @@ class Plugin extends AppPlugin {
         background: color-mix(in srgb, var(--button-bg-hover-color, rgba(0,0,0,0.05)) 55%, transparent);
       }
       .cadence-section-group {
-        margin-bottom: 16px;
+        margin-bottom: 0;
       }
       .cadence-section-row {
         align-items: center;
         justify-content: space-between;
-        gap: 16px;
+        gap: 12px;
       }
       .cadence-section-title {
         font-size: 16px;
         font-weight: 600;
         line-height: 1.15;
-        margin-bottom: 4px;
+        margin-bottom: 2px;
       }
       .cadence-required-pill {
         border-radius: 999px;
@@ -1732,10 +1732,10 @@ class Plugin extends AppPlugin {
         margin-bottom: 6px;
       }
       .cadence-help {
-        margin-top: 8px;
+        margin-top: 2px;
       }
       .cadence-help-tight {
-        margin-top: 4px;
+        margin-top: 2px;
       }
       .cadence-switch {
         border: none;
